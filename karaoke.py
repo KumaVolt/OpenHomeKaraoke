@@ -126,6 +126,12 @@ class Karaoke:
 		logging.debug("IP address (for QR code and splash screen): " + self.ip)
 
 		self.url = "%s://%s:%s" % (('https' if self.ssl else 'http'), self.ip, self.port)
+		# Behind a reverse proxy (e.g. https://karaoke.example.com) the URL shown in the
+		# QR code and on screen differs from ip:port, so allow overriding it
+		if os.environ.get('PUBLIC_URL'):
+			self.url = os.environ['PUBLIC_URL'].rstrip('/')
+		# screencapture.sh serves plain http on port 4000
+		self.stream_url = os.environ.get('STREAM_URL', '').rstrip('/') or "http://%s:4000" % self.ip
 
 		# get songs from download_path
 		self.get_available_songs()
@@ -346,7 +352,7 @@ class Karaoke:
 				self.screen.blit(text[0], self.normalize((qr_size + 35, blitY)))
 				# Windows and Mac-OS should use screen projection and AirPlay
 				if self.streamer_alive():
-					text = self.render_font(sysfont_size, getString(50) + self.url.rsplit(":", 1)[0] + ":4000", (255, 255, 255))
+					text = self.render_font(sysfont_size, getString(50) + self.stream_url, (255, 255, 255))
 					self.screen.blit(text[0], self.normalize((qr_size + 35, blitY - 40)))
 				if not self.firstSongStarted:
 					text = self.render_font(sysfont_size, getString(51), (255, 255, 255))

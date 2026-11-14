@@ -61,6 +61,8 @@ Check with `id -u`, and if it's different, edit the `user:` line and the `/run/u
 | Variable | Default | Meaning |
 |---|---|---|
 | `HOST_IP` | auto-detected | IP address shown in the QR code and on-screen URL. Set it in headless mode. |
+| `PUBLIC_URL` | `http://<HOST_IP>:5000` | Full web UI URL for the QR code and screen, for use behind a reverse proxy (for example `https://karaoke.example.com`). |
+| `STREAM_URL` | `http://<HOST_IP>:4000` | Full TV stream URL shown on screen, for use behind a reverse proxy (for example `https://karaoke-tv.example.com`). |
 | `SCREEN_SIZE` | `1280x720` | Resolution of the virtual screen in headless mode (for example `1920x1080`). |
 | `OHK_MODE` | `headless` | `headless` or `host`. |
 | `ENABLE_STREAM` | `1` headless, `0` host | Whether to stream the screen on port 4000. |
@@ -98,6 +100,49 @@ and pass it with `-c`:
       - ./songs:/songs
       - ./cookies.txt:/cookies/cookies.txt:ro
 ```
+
+## Behind a reverse proxy with your own domain
+
+You can serve OpenHomeKaraoke on a domain through Nginx Proxy Manager, Traefik, Caddy or a similar proxy.
+HTTPS also makes the browser microphone (speech search) work.
+
+```yaml
+services:
+  openhomekaraoke:
+    build: .
+    container_name: openhomekaraoke
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: "https://karaoke.example.com"
+      STREAM_URL: "https://karaoke-tv.example.com"
+    command: ["--admin-password", "change-me"]
+    volumes:
+      - ./songs:/songs
+    shm_size: "256m"
+    networks:
+      - proxy          # the network your proxy is on; no ports need publishing
+
+networks:
+  proxy:
+    external: true
+```
+
+Then create two hosts in your proxy:
+
+| Domain | Forward to | Notes |
+|---|---|---|
+| `karaoke.example.com` | `openhomekaraoke:5000` | Turn on WebSocket support. The web UI needs it. |
+| `karaoke-tv.example.com` | `openhomekaraoke:4000` | The TV opens this. |
+
+> **Security:** without `--admin-password`, every visitor is an admin and can delete or rename songs.
+> Even with a password, anyone who can reach the site can make your server download from YouTube.
+> Put both hosts behind your proxy's access control (for example an Nginx Proxy Manager Access List with basic auth),
+> or reach the server over a VPN such as Tailscale or WireGuard instead of exposing it publicly.
+
+> **YouTube on hosted servers:** YouTube often blocks downloads from datacenter or VPS IP addresses
+> ("Sign in to confirm you're not a bot"). If that happens, use the cookies setup above.
+
+The container always runs as uid 1000, so the songs folder must be writable by that user.
 
 ## Troubleshooting
 
