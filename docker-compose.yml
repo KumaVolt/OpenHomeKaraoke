@@ -1,0 +1,33 @@
+# OpenHomeKaraoke - headless mode (works on Linux, macOS, Windows, NAS, Raspberry Pi 64-bit)
+#
+#   1. Set HOST_IP below to this machine's LAN IP (so the QR code points to the right place)
+#   2. docker compose up -d
+#   3. Phones/computers: open http://<HOST_IP>:5000 to search and queue songs
+#      TV: open http://<HOST_IP>:4000 in the TV's web browser to watch/hear the karaoke screen
+#
+# To show the karaoke screen on a monitor/TV plugged into a Linux host instead,
+# see docker-compose.host.yml and docker/README.md.
+
+services:
+  openhomekaraoke:
+    build:
+      context: .
+      args:
+        # true = include the DNN vocal splitter (CPU, adds ~1-2 GB to the image)
+        WITH_VOCAL_SPLITTER: "false"
+    image: openhomekaraoke
+    container_name: openhomekaraoke
+    restart: unless-stopped
+    environment:
+      HOST_IP: "192.168.1.100"     # <-- change to this machine's LAN IP
+      SCREEN_SIZE: "1280x720"
+      TZ: "Etc/UTC"
+    # Extra app.py options, e.g. ["--admin-password", "secret", "-L", "zh_CN"]
+    command: []
+    ports:
+      - "5000:5000"   # web UI
+      - "5001:5001"   # web UI over https (needed for browser microphone / speech search)
+      - "4000:4000"   # karaoke screen stream for the TV browser
+    volumes:
+      - ./songs:/songs
+    shm_size: "256m"

@@ -200,6 +200,9 @@ class Karaoke:
 	# Other ip-getting methods are unreliable and sometimes return 127.0.0.1
 	# https://stackoverflow.com/a/28950776
 	def get_ip(self):
+		# Inside Docker the detected IP is the container's, so allow overriding it
+		if os.environ.get('HOST_IP'):
+			return os.environ['HOST_IP']
 		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		try:
 			# doesn't even have to be reachable

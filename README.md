@@ -57,6 +57,20 @@ This _should_ work on Windows, Linux machines and all Raspberry Pi devices (mult
 
 ## Installation
 
+### Docker (easiest)
+
+If you have [Docker](https://docs.docker.com/get-docker/), you don't need to install anything else:
+
+```
+git clone https://github.com/xuancong84/OpenHomeKaraoke.git
+cd OpenHomeKaraoke
+# edit HOST_IP in docker-compose.yml to this machine's LAN IP, then:
+docker compose up -d
+```
+
+Open `http://<HOST_IP>:5000` on your phone to queue songs, and `http://<HOST_IP>:4000` in your TV's browser to watch.
+To show the karaoke screen on a monitor or TV plugged into a Linux machine, or to enable the DNN vocal splitter, see [docker/README.md](docker/README.md).
+
 ### For all OS
 
 - Install git, if you haven't already. (on Raspberry Pi: `sudo apt-get update; sudo apt-get install git`)

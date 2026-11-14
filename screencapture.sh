@@ -163,7 +163,7 @@ startCapture(){
 		-c:v libx264 -profile:v baseline -tune fastdecode -preset ultrafast -b:v "$TARGETBITRATE" -maxrate "$MAXBITRATE" -bufsize "$BUFFERSIZE" \
 		-r "$FRAMERATE" -g $(calc "round($FRAMERATE*$SEGMENTDURATION)") -keyint_min $(calc "round($FRAMERATE*$SEGMENTDURATION)") \
 		-movflags +empty_moov+frag_keyframe+default_base_moof+cgop -f dash -seg_duration $SEGMENTDURATION \
-		-min_seg_duration $(calc "round($SEGMENTDURATION*1000000)") -use_template 0 -window_size "$MAXSEGMENTS" -extra_window_size 0 -remove_at_exit 1 \
+		-use_template 0 -window_size "$MAXSEGMENTS" -extra_window_size 0 -remove_at_exit 1 \
 		-init_seg_name "\$RepresentationID\$/0" -media_seg_name "\$RepresentationID\$/\$Number\$" manifest.mpd
 
 	local status="$?"

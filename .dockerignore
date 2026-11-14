@@ -1,0 +1,9 @@
+.git
+.readme
+**/__pycache__
+*.pyc
+Dockerfile
+docker-compose*.yml
+.dockerignore
+songs
+miniconda3

@@ -1,0 +1,27 @@
+# OpenHomeKaraoke - host display mode (Linux only)
+#
+# Shows the karaoke screen on the monitor/TV connected to this Linux machine and plays
+# sound through its speakers, like running app.py directly.
+#
+#   xhost +local:
+#   docker compose -f docker-compose.yml -f docker-compose.host.yml up -d
+#
+# Assumes your desktop user has uid 1000 (check with `id -u`); otherwise change
+# `user:` and the pulse socket path below.
+
+services:
+  openhomekaraoke:
+    network_mode: host      # app sees the real LAN IP; ports are not remapped
+    ports: !reset []
+    user: "1000:1000"
+    environment:
+      OHK_MODE: "host"
+      DISPLAY: "${DISPLAY:-:0}"
+      PULSE_SERVER: "unix:/run/user/1000/pulse/native"
+      HOST_IP: ""           # not needed with host networking
+      ENABLE_STREAM: "0"    # set to "1" to also stream to http://<ip>:4000
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - /run/user/1000/pulse/native:/run/user/1000/pulse/native
+    devices:
+      - /dev/dri:/dev/dri   # GPU-accelerated video output (remove if you have no /dev/dri)
