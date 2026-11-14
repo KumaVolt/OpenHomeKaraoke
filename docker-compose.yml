@@ -20,6 +20,8 @@ services:
     restart: unless-stopped
     environment:
       HOST_IP: "192.168.1.100"     # <-- change to this machine's LAN IP
+      # If you change the host side of a port below (e.g. "5050:5000"), also set:
+      # PUBLIC_URL: "http://192.168.1.100:5050"
       SCREEN_SIZE: "1280x720"
       TZ: "Etc/UTC"
     # Extra app.py options, e.g. ["--admin-password", "secret", "-L", "zh_CN"]

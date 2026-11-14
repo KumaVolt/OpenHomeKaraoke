@@ -33,7 +33,10 @@ The first build takes a few minutes. After that:
 To stop it, run `docker compose down`. To see the logs, run `docker compose logs -f`.
 
 > **macOS:** the AirPlay Receiver already uses port 5000. Turn it off in System Settings → General → AirDrop & Handoff,
-> or change the port mapping to `"5050:5000"` and open `http://<HOST_IP>:5050` instead.
+> or change the port mapping to `"5050:5000"` and set `PUBLIC_URL: "http://<HOST_IP>:5050"` so the QR code uses the new port.
+>
+> **macOS firewall:** if your phone shows a blank page or keeps loading, allow incoming connections for Docker
+> in System Settings → Network → Firewall → Options.
 
 ### How headless mode works
 
@@ -147,6 +150,8 @@ The container always runs as uid 1000, so the songs folder must be writable by t
 ## Troubleshooting
 
 - **Phones can't connect, or the QR code shows a 172.x.x.x address**: set `HOST_IP` to this machine's LAN IP.
+- **The QR code opens the wrong port**: if you changed the left side of a port mapping (for example `"5050:5000"`),
+  set `PUBLIC_URL` to the full address with that port, and `STREAM_URL` the same way if you changed `4000`.
 - **The TV page is black or silent**: click or tap the video once (browsers block autoplay with sound). Check that port 4000 is published.
   Run `docker compose exec openhomekaraoke cat /tmp/screencapture.log` for the streamer's log.
 - **Host display mode: "cannot connect to X display"**: run `xhost +local:` on the host first, and check that `DISPLAY` is set (`echo $DISPLAY`).
