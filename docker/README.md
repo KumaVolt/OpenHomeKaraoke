@@ -98,7 +98,9 @@ This adds about 1–2 GB to the image. Splitting runs on the CPU in the backgrou
 Songs without lyrics of their own (not a karaoke video, no subtitles in the file) get time-synced lyrics from
 [LRCLIB](https://lrclib.net), a free, open lyrics database. They're looked up during the "Get ready" countdown,
 cached in `songs/.lyrics/`, and shown over the video with a karaoke colour fill.
-If they run early or late (for example a music video with a long intro), use the subtitle delay control in the web UI.
+Before they're saved, the app listens for where the singing is in the song (using the vocals-only track when the
+vocal splitter has made one) and lines the lyrics up with it, which also handles music videos with an extra intro.
+If they still run early or late, use the subtitle delay control in the web UI.
 The subtitle switch in the web UI turns them off for a song, and `--no-lyrics` turns the lookup off completely.
 
 ### YouTube cookies
