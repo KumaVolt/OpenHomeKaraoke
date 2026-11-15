@@ -85,6 +85,17 @@ def search(name, duration, limit = 6):
 	return unique[:limit]
 
 
+def _is_cjk(text):
+	return any(ord(c) > 0x2e80 and c.isalpha() for c in text)
+
+
+def _repair(words):
+	"""Lyrics cached before a fix: a one-word line like "Yeah" was split into letters like a CJK line."""
+	if len(words) > 1 and all(t is None and len(w) == 1 for t, w in words) and not _is_cjk(''.join(w for _, w in words)):
+		return [(None, ''.join(w for _, w in words))]
+	return words
+
+
 def parse_lrc(text):
 	"""[(start, [(word_start or None, word), ...]), ...] sorted by start; an empty word list is a pause."""
 	lines = []
@@ -99,7 +110,7 @@ def parse_lrc(text):
 				if w:
 					words.append((int(parts[i]) * 60 + float(parts[i + 1]), w))
 		else:
-			units = body.split() if ' ' in body.strip() else list(body.strip())  # words, or characters for CJK
+			units = body.split() if ' ' in body.strip() or not _is_cjk(body) else list(body.strip())  # words, or characters for CJK
 			words = [(None, w) for w in units if w.strip()]
 		for m, s in stamps:
 			lines.append((int(m) * 60 + float(s), words))
@@ -184,6 +195,8 @@ def to_ass(lines, font = 'Arial Unicode MS', roman_lang = None, notes = None):
 			sing = estimate_sing(words, gap)  # never fill faster than the usual pace: a racing fill is worse than a slow one
 			if measured:
 				sing = min(gap * 0.97, max(sing, measured))
+			else:  # not measured (no vocals track yet): a slow singer would leave a usual-pace fill far behind
+				sing = min(gap * 0.97, max(sing, min(gap * 0.8, sing * 2)))
 			total = sum(len(w) for _, w in words)
 			durs = [sing * len(w) / total for _, w in words]
 			lead = 0
@@ -220,7 +233,7 @@ def load(song_path, cache_dir, word_times = True):
 	if not os.path.isfile(path):
 		return None
 	with open(path, encoding = 'utf-8') as fp:
-		lines = [(L[0], [tuple(w) for w in L[1]], L[2]) for L in json.load(fp)]
+		lines = [(L[0], _repair([tuple(w) for w in L[1]]), L[2]) for L in json.load(fp)]
 	if word_times:
 		from lib import word_align
 		timed = word_align.load(song_path, cache_dir)
