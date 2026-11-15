@@ -213,6 +213,10 @@ def to_ass(lines, font = 'Arial Unicode MS', roman_lang = None, notes = None):
 		upcoming = next((L for L in lines[i + 1:] if L[1]), None)  # (start, words, ...)
 		if upcoming and upcoming[0] - end < 4:
 			events.append((t, end, 'Next', _joiner(upcoming[1]).join(_esc(w) for _, w in upcoming[1])))
+	if any(L[1] for L in lines) and not any(len(L) > 3 for L in lines):
+		# debug marker: a small red dot in the top-left corner while a song's words haven't been timed yet
+		events.append((0, 36000, 'Lane', '{\\an7\\pos(18,18)\\bord1\\shad0\\1c&H2828E6&\\3c&HFFFFFF&\\p1}'
+		               'm 8 0 b 12 0 16 4 16 8 b 16 12 12 16 8 16 b 4 16 0 12 0 8 b 0 4 4 0 8 0{\\p0}'))
 	body = ''.join('Dialogue: %d,%s,%s,%s,,0,0,0,,%s\n' % (e[4] if len(e) > 4 else 0, _ts(e[0]), _ts(e[1]), e[2], e[3]) for e in events)
 	header = ASS_HEADER.replace('{font}', font)
 	if SIDE_MARGIN != 60:
