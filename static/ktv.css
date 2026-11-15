@@ -1,0 +1,295 @@
+/* OpenHomeKaraoke KTV theme
+ * Loaded after bulma-dark.css and custom.css. Colours of a karaoke room at night:
+ * aubergine walls, velvet booths, and two neon tubes (pink for actions, cyan for state).
+ * The only glowing element is the "Now Playing" sign; everything else stays flat.
+ */
+:root {
+	--room: #1a1030;
+	--booth: #261a44;
+	--booth-raised: #30225a;
+	--velvet: #3a2b5e;
+	--pink: #ff3ea5;
+	--pink-deep: #c81f7c;
+	--cyan: #3ee7ff;
+	--lyric: #f4eeff;
+	--muted: #a99bc9;
+	--danger: #ff6b6b;
+	--radius: 14px;
+	--tabbar-h: 64px;
+	--font: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", "Arial Rounded MT Bold",
+		system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans CJK SC", sans-serif;
+}
+
+html, body {
+	background: var(--room);
+	color: var(--lyric);
+	font-family: var(--font);
+}
+body { line-height: 1.4; }
+
+/* ---------- surfaces ---------- */
+.box, .has-background-black-bis, .has-background-dark {
+	background: var(--booth) !important;
+	color: var(--lyric);
+	border: 1px solid var(--velvet);
+	border-radius: var(--radius);
+	box-shadow: none;
+}
+#container.box { background: transparent !important; border: 0; padding: 4px 2px; }
+.content, .content p, .content h1, .content h2, .content h3, .content h4, .title, .label {
+	color: var(--lyric);
+}
+header.title h1, .title h1 {
+	font-family: var(--font);
+	font-weight: 800;
+	font-size: 1.6rem;
+	letter-spacing: -0.01em;
+	margin-bottom: .6rem;
+}
+hr { background: var(--velvet); height: 1px; }
+a { color: var(--cyan); }
+a:hover { color: var(--lyric); }
+.has-text-success { color: var(--cyan) !important; }
+.has-text-warning { color: var(--lyric) !important; }
+.has-text-danger { color: var(--danger) !important; }
+.help { color: var(--muted); }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+/* ---------- form controls ---------- */
+.input, .textarea, .select select, .selectize-input {
+	background: var(--room) !important;
+	color: var(--lyric) !important;
+	border: 1px solid var(--velvet) !important;
+	border-radius: 999px !important;
+	box-shadow: none !important;
+	min-height: 48px;
+	font-size: 1.05rem;
+	padding-left: 1.1em;
+}
+.select select { border-radius: var(--radius) !important; }
+.input::placeholder { color: var(--muted); }
+.input:focus, .selectize-input.focus { border-color: var(--cyan) !important; }
+.button {
+	background: var(--booth-raised);
+	color: var(--lyric);
+	border: 1px solid var(--velvet);
+	border-radius: 999px;
+	font-weight: 700;
+}
+.button:hover { border-color: var(--cyan); color: var(--lyric); }
+.button.is-primary, .button.is-warning, .button.is-success, #search-field .button {
+	background: var(--pink);
+	border-color: var(--pink);
+	color: #fff;
+	min-height: 48px;
+	padding-inline: 1.3em;
+}
+.button.is-primary:hover, .button.is-warning:hover, .button.is-success:hover, #search-field .button:hover {
+	background: var(--pink-deep);
+	border-color: var(--pink-deep);
+}
+.field.has-addons .control:first-child .input { border-radius: 999px 0 0 999px !important; }
+.field.has-addons .control:last-child .button { border-radius: 0 999px 999px 0; }
+.checkbox:hover { color: var(--lyric); }
+input[type=checkbox] { accent-color: var(--pink); }
+
+input[type=range] {
+	-webkit-appearance: none;
+	appearance: none;
+	background: transparent;
+	height: 28px;
+	accent-color: var(--cyan);
+}
+input[type=range]::-webkit-slider-runnable-track { height: 6px; background: var(--velvet); border-radius: 3px; }
+input[type=range]::-moz-range-track { height: 6px; background: var(--velvet); border-radius: 3px; }
+input[type=range]::-moz-range-progress { height: 6px; background: var(--cyan); border-radius: 3px; }
+input[type=range]::-webkit-slider-thumb {
+	-webkit-appearance: none; appearance: none;
+	width: 22px; height: 22px; margin-top: -8px;
+	border-radius: 50%; background: var(--lyric); border: 3px solid var(--cyan);
+}
+input[type=range]::-moz-range-thumb {
+	width: 16px; height: 16px; border-radius: 50%; background: var(--lyric); border: 3px solid var(--cyan);
+}
+
+/* ---------- tables and lists ---------- */
+.table, table { background: transparent !important; color: var(--lyric); }
+.table td, .table th, table td { border-color: var(--velvet) !important; color: var(--lyric); vertical-align: middle !important; }
+tr:nth-child(even), .table.is-striped tbody tr:not(.is-selected):nth-child(even) { background: transparent !important; }
+#alpha-bar { border: 0; background: transparent !important; }
+#alpha-bar a {
+	display: inline-block; min-width: 2em; padding: .25em .4em; margin: 2px;
+	text-align: center; border-radius: 8px; background: var(--booth); color: var(--muted);
+}
+#alpha-bar a:hover { color: var(--lyric); background: var(--booth-raised); }
+.pagination-link, .pagination-previous, .pagination-next {
+	background: var(--booth); border-color: var(--velvet); color: var(--lyric); border-radius: 10px;
+}
+.pagination-link.is-current { background: var(--pink); border-color: var(--pink); }
+
+/* ---------- notification toast ---------- */
+.notification {
+	background: var(--booth-raised) !important;
+	color: var(--lyric) !important;
+	border: 1px solid var(--velvet);
+	border-left: 4px solid var(--cyan);
+	border-radius: var(--radius);
+}
+.notification.is-danger { border-left-color: var(--danger); }
+
+/* ---------- navigation ---------- */
+.navbar {
+	background: var(--booth) !important;
+	border-bottom: 1px solid var(--velvet);
+	overflow: visible !important;
+}
+.navbar-item, .navbar-link { color: var(--muted); }
+.navbar-item:hover, a.navbar-item:hover { background: transparent !important; color: var(--lyric); }
+.navbar-item.is-active, a.navbar-item.is-active { background: transparent !important; color: var(--pink) !important; }
+.navbar-burger { color: var(--muted); }
+.navbar-menu { background: var(--booth-raised); }
+
+/* phones: the nav becomes a bottom tab bar within thumb reach */
+@media screen and (max-width: 1023px) {
+	.navbar {
+		top: auto !important;
+		bottom: 0;
+		border-top: 1px solid var(--velvet);
+		border-bottom: 0;
+		padding-bottom: env(safe-area-inset-bottom);
+	}
+	.navbar-brand { min-height: var(--tabbar-h); padding-left: 0 !important; }
+	.navbar-brand > .navbar-item, .navbar-brand > .navbar-burger {
+		flex: 1 1 0;
+		flex-direction: column;
+		justify-content: center;
+		gap: 2px;
+		padding: 6px 2px;
+		margin: 0 !important;
+		height: var(--tabbar-h);
+		font-size: .7rem;
+	}
+	.navbar-brand > .navbar-item > i { font-size: 22px; margin: 0; line-height: 1; }
+	.navbar-brand > .navbar-item { min-width: 0; }
+	#speak > span { display: none !important; }
+	.navbar-brand > .navbar-item > span {
+		display: block !important;
+		max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	}
+	.navbar-burger span { left: calc(50% - 8px); }
+	.navbar-menu {
+		position: absolute;
+		bottom: 100%;
+		left: 0; right: 0;
+		border-top: 1px solid var(--velvet);
+		box-shadow: none;
+	}
+	body > .container { margin-top: 8px !important; padding-bottom: calc(var(--tabbar-h) + 24px) !important; }
+	.notification { bottom: calc(var(--tabbar-h) + 10px) !important; }
+}
+
+/* ---------- Now Playing: the neon sign ---------- */
+.ktv-sign {
+	position: relative;
+	padding: 1.1rem 1.1rem 1rem;
+	margin-bottom: 1rem;
+	border-radius: 20px;
+	background: radial-gradient(120% 90% at 0% 0%, #3b1a52 0%, var(--booth) 60%);
+	border: 2px solid var(--pink);
+	box-shadow: 0 0 0 1px rgba(255, 62, 165, .25), 0 0 22px rgba(255, 62, 165, .35), inset 0 0 18px rgba(255, 62, 165, .15);
+}
+.ktv-sign .ktv-sign-label {
+	display: flex; align-items: center; gap: .5rem;
+	color: var(--muted); font-size: .95rem; font-weight: 600; margin-bottom: .35rem;
+}
+.ktv-sign .ktv-sign-label img { width: 26px; height: auto; }
+#now-playing .ktv-song {
+	font-size: clamp(1.6rem, 6.5vw, 2.4rem);
+	font-weight: 800;
+	line-height: 1.1;
+	letter-spacing: -0.01em;
+	color: #fff;
+	text-shadow: 0 0 4px #fff, 0 0 12px var(--pink), 0 0 28px var(--pink);
+	overflow-wrap: anywhere;
+	margin: 0 0 .35rem;
+}
+#now-playing .ktv-singer { color: var(--cyan); font-weight: 700; font-size: 1.05rem; }
+#now-playing .ktv-idle { color: var(--muted); font-size: 1.15rem; font-weight: 600; text-shadow: none; }
+.ktv-progress { margin-top: .8rem; }
+.ktv-progress .ktv-times { display: flex; justify-content: space-between; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+
+.ktv-next {
+	display: flex; align-items: baseline; gap: .6rem;
+	padding: .75rem 1rem; margin-bottom: 1rem;
+	background: var(--booth); border: 1px solid var(--velvet); border-radius: var(--radius);
+}
+.ktv-next > .ktv-next-label { color: var(--muted); font-weight: 600; white-space: nowrap; }
+#up-next { flex: 1; min-width: 0; color: var(--lyric) !important; }
+#up-next .ktv-next-song { font-weight: 700; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#up-next .ktv-next-singer { color: var(--cyan); font-size: .9rem; }
+
+#label-player-control { font-size: 1.1rem !important; font-weight: 700; margin: 0; }
+
+/* transport: big round buttons */
+.ktv-transport { display: flex; align-items: center; justify-content: center; gap: 1.4rem; margin: .3rem 0 1rem; }
+.ktv-transport a {
+	display: inline-flex; align-items: center; justify-content: center;
+	width: 58px; height: 58px; border-radius: 50%;
+	background: var(--booth-raised); border: 1px solid var(--velvet);
+	color: var(--lyric) !important; font-size: 1.5rem; cursor: pointer;
+}
+.ktv-transport a.ktv-play { width: 78px; height: 78px; font-size: 2rem; background: var(--pink); border-color: var(--pink); }
+.ktv-transport a:active { transform: scale(.95); }
+.ktv-transport i, .ktv-transport i::before { margin: 0 !important; }
+
+.ktv-volume {
+	display: flex; align-items: center; justify-content: center; gap: .8rem;
+	margin-bottom: 1rem; font-size: 1.2rem;
+}
+.ktv-volume a { color: var(--lyric) !important; }
+.ktv-volume a[id^=vol-] {
+	display: inline-flex; align-items: center; justify-content: center;
+	width: 44px; height: 44px; border-radius: 50%; background: var(--booth-raised); border: 1px solid var(--velvet);
+}
+#vol { min-width: 3.5ch; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* tuning rows (key, speed, delays) */
+.ktv-tune { border-top: 1px solid var(--velvet); padding-top: .9rem; margin-top: .4rem; }
+.ktv-tune h4 { font-size: 1rem !important; font-weight: 600; color: var(--lyric); }
+.ktv-tune .tabs { font-variant-numeric: tabular-nums; }
+#delay-dec, #subdelay-dec, #delay-inc, #subdelay-inc {
+	color: var(--muted) !important; font-weight: 400 !important;
+	width: 36px; height: 36px; display: inline-flex !important; align-items: center; justify-content: center;
+	border-radius: 50%; background: var(--booth-raised);
+}
+.boxedText { border-color: var(--cyan) !important; color: var(--cyan); border-radius: 8px; }
+#s3-inner { background: var(--room) !important; border: 1px solid var(--velvet); }
+.redButton { background: var(--pink) !important; box-shadow: 0 0 8px var(--pink); }
+
+/* ---------- queue ---------- */
+#auto-refresh tr { border-bottom: 1px solid var(--velvet); }
+#auto-refresh td { padding-top: .7rem !important; padding-bottom: .7rem !important; border: 0 !important; }
+#auto-refresh .q-pos {
+	width: 2.2rem; text-align: center;
+}
+#auto-refresh .q-pos span {
+	display: inline-flex; align-items: center; justify-content: center;
+	width: 1.8rem; height: 1.8rem; border-radius: 50%;
+	background: var(--booth-raised); color: var(--muted); font-weight: 800; font-size: .9rem;
+}
+#auto-refresh tr:first-child .q-pos span { background: var(--pink); color: #fff; }
+#auto-refresh .q-song { display: block; font-weight: 700; color: var(--lyric); }
+#auto-refresh .q-singer { display: block; color: var(--cyan); font-size: .9rem; }
+#auto-refresh .drag-starter { background: transparent !important; color: var(--muted); }
+#auto-refresh .drag-starter a { color: var(--muted); }
+.ui-sortable-helper { background: var(--booth-raised) !important; }
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+	* { transition: none !important; animation: none !important; }
+}
+
+/* ---------- spacing fixes ---------- */
+.ktv-tune h4, .ktv-tune h3 { margin: 0 !important; line-height: 1.3; }
+.content .help, .content p.help { color: var(--muted) !important; }
+body > .container { padding-left: 14px !important; padding-right: 14px !important; }

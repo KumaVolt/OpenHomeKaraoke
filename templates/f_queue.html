@@ -1,8 +1,6 @@
 <script src="/static/jquery.ui.touch-punch.min.js"></script>
 <style>
-  .drag-starter {
-    background-color: rgb(87, 78, 11);
-  }
+  .drag-starter { cursor: grab; }
 </style>
 <script>
 var queue = [];
@@ -47,7 +45,7 @@ function generateQueueHTML() {
 		queue.forEach((e, index) => {
 			html += `
 				<tr value=${e.title}>
-					<td width="20px" style="padding: 5px 0px">${index + 1}</td>
+					<td class="q-pos"><span>${index + 1}</span></td>
 					{% if admin %}
 						<td width="20px" style="padding: 5px 0px" class="drag-starter">
 							<a
@@ -66,8 +64,7 @@ function generateQueueHTML() {
 							</a>
 						</td>
 					{% endif %}
-					<td style="padding-left: 10px" ><b class="is-hidden-tablet has-text-success">${e.user}: </b> ${e.title}</td>
-					<td style="padding-left: 5px"  class="queue-user is-hidden-mobile has-text-success"><b>${e.user}</b></td>
+					<td style="padding-left: 10px"><span class="q-song">${e.title}</span><span class="q-singer"><i class="icon icon-mic-1"></i>${e.user}</span></td>
 					{% if admin %}
 						<td width="20px">
 							<a
