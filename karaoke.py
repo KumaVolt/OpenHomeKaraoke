@@ -490,7 +490,10 @@ class Karaoke:
 		getString2 = lambda ii: os.langs.get(client_lang, os.langs['en_US'])[ii]
 		self.downloading_songs[song_url] = 1
 		dl_path = "%(title)s---%(id)s.%(ext)s"
-		opt_quality = ['-f', 'bestvideo[height<=1080]+bestaudio[abr<=160]'] if high_quality else ['-f', 'mp4+m4a']
+		# Prefer H.264: YouTube's default AV1 or VP9 at 1080p60 needs more CPU to decode than small machines have, and the
+		# TV stream is 720p anyway. VIDEO_FORMAT_SORT (yt-dlp -S) overrides the preference, e.g. "res:1080" on a fast machine.
+		sort = os.environ.get('VIDEO_FORMAT_SORT', 'vcodec:h264,res:1080,fps,acodec:m4a' if high_quality else 'vcodec:h264,res:720,fps:30,acodec:m4a')
+		opt_quality = ['-f', 'bv*[height<=1080]+ba[abr<=160]/b' if high_quality else 'bv*+ba/b', '-S', sort]
 		opt_sub = ['--sub-langs', 'all', '--embed-subs'] if include_subtitles else []
 		cmd = ['--fixup', 'force', '--socket-timeout', '3', '-R', 'infinite', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + opt_quality +\
 			["-o", self.download_path+'tmp/'+dl_path] + opt_sub + [song_url]
