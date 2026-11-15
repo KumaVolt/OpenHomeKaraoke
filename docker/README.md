@@ -44,6 +44,21 @@ The container runs a virtual screen (Xvfb) and a virtual sound card (PulseAudio)
 OpenHomeKaraoke and VLC draw on that virtual screen, and the project's own `screencapture.sh` encodes the
 screen and sound with ffmpeg and serves them on port 4000. Expect a delay of a second or two on the TV.
 
+## Prebuilt images (Portainer, NAS)
+
+GitHub Actions builds the image for amd64 and arm64 and publishes it, so a server can pull it instead of building it:
+
+| Image | Contents |
+|---|---|
+| `ghcr.io/kumavolt/openhomekaraoke:latest` | Light image |
+| `ghcr.io/kumavolt/openhomekaraoke:latest-vocal` | With the DNN vocal splitter (about 1–2 GB bigger) |
+
+Builds of other branches are tagged with the branch name, for example `:feature-synced-lyrics` and `:feature-synced-lyrics-vocal`.
+
+In Portainer, go to **Stacks → Add stack → Web editor**, paste [`portainer-stack.yml`](portainer-stack.yml),
+change `HOST_IP` (and the image tag if you want the vocal splitter), then deploy.
+To update later, open the stack and choose **Update the stack** with **Re-pull image** turned on.
+
 ## Host display mode (Linux)
 
 Use this mode to show the karaoke screen full-screen on the monitor or TV connected to the machine, like running `app.py` directly.
