@@ -8,8 +8,9 @@
 
 services:
   openhomekaraoke:
-    # :latest (light) or :latest-vocal. For a branch build use its name, e.g. :feature-synced-lyrics-vocal
-    image: ghcr.io/kumavolt/openhomekaraoke:latest
+    # Branch builds are tagged with the branch name; add -vocal for the vocal splitter.
+    # Once this is merged into master, :latest and :latest-vocal follow master.
+    image: ghcr.io/kumavolt/openhomekaraoke:feature-synced-lyrics
     container_name: openhomekaraoke
     restart: unless-stopped
     environment:

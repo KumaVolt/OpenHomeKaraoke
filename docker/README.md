@@ -54,6 +54,7 @@ GitHub Actions builds the image for amd64 and arm64 and publishes it, so a serve
 | `ghcr.io/kumavolt/openhomekaraoke:latest-vocal` | With the DNN vocal splitter (about 1–2 GB bigger) |
 
 Builds of other branches are tagged with the branch name, for example `:feature-synced-lyrics` and `:feature-synced-lyrics-vocal`.
+`:latest` is built from `master`, so it only exists once Docker support is merged there.
 
 In Portainer, go to **Stacks → Add stack → Web editor**, paste [`portainer-stack.yml`](portainer-stack.yml),
 change `HOST_IP` (and the image tag if you want the vocal splitter), then deploy.
