@@ -170,6 +170,7 @@ class Karaoke:
 		# clean up old sessions
 		self.kill_player()
 
+		self.load_settings()
 		self.generate_qr_code()
 		if self.use_vlc:
 			# the QR overlay is added per song (tv_qr_overlay), sized for each video, rather than by the client
@@ -1163,10 +1164,39 @@ class Karaoke:
 			logging.warning('Pitch guide failed: ' + traceback.format_exc())
 			return None
 
-	def toggle_qr(self):
+	def settings_file(self):
+		return os.path.join(self.download_path, '.settings.json')
+
+	def load_settings(self):
+		"""Choices made in the Settings page that should survive a restart (kept with the songs)."""
+		try:
+			with open(self.settings_file()) as fp:
+				saved = json.load(fp)
+		except (OSError, ValueError):
+			return
+		if isinstance(saved.get('show_qr'), bool):
+			self.show_overlay = saved['show_qr']
+
+	def save_setting(self, key, value):
+		try:
+			with open(self.settings_file()) as fp:
+				saved = json.load(fp)
+		except (OSError, ValueError):
+			saved = {}
+		saved[key] = value
+		try:
+			with open(self.settings_file(), 'w') as fp:
+				json.dump(saved, fp)
+		except OSError:
+			logging.warning('Could not save the setting %s' % key)
+
+	def set_qr(self, on):
 		"""Show or hide the "Scan to sing" QR code that is pinned to the corner while songs play."""
-		self.show_overlay = not self.show_overlay
-		lyrics.SIDE_MARGIN = 180 if self.show_overlay else 60
+		self.save_setting('show_qr', on)
+		if on == self.show_overlay:
+			return
+		self.show_overlay = on
+		lyrics.SIDE_MARGIN = 180 if on else 60
 		if self.is_file_playing():
 			self.play_vocal(force = True)  # restarts VLC at the same position, with or without the overlay
 
