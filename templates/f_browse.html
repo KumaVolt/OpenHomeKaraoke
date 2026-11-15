@@ -65,6 +65,9 @@
   {% endfor %}
 </div>
 
+<input id="browse-search" class="input" type="search" autocomplete="off" placeholder="{{getString1(263)}}"
+  style="margin-bottom: 10px">
+<p id="browse-empty" style="display: none"></p>
 {{ pagination.links }}
 {{ pagination.info }}
 <table>
@@ -122,6 +125,19 @@ $('a.add-song-link').click(function(e) {
       showNotification("{{getString1(94)}}" + obj.song, "is-danger")
   })
 })
+
+// filter the list as you type; accents and case don't matter ("beyonce" finds "Beyoncé")
+var fold = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+$('#browse-search').on('input', function() {
+  var words = fold(this.value).split(/\s+/).filter(Boolean), shown = 0;
+  $('table tr').each(function() {
+    var name = fold($(this).children('td').eq(2).text());
+    var hit = words.every(w => name.includes(w));
+    $(this).toggle(hit);
+    shown += hit;
+  });
+  $('#browse-empty').toggle(words.length > 0 && shown == 0).text('0 / ' + $('table tr').length);
+});
 
 function onEdit(url){
   showNotification("{{getString1(104)}}…", "is-info");

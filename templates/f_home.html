@@ -58,6 +58,12 @@ function update(data){
 
 	if("subtitle_delay" in obj){
 		$("#subdelay-box").show();
+		if("qr" in obj){
+			$("#qr-row").show();
+			$("#qr-btn").text(obj.qr ? "{{getString1(256)}}" : "{{getString1(257)}}").toggleClass("is-on", obj.qr);
+		}else{
+			$("#qr-row").hide();
+		}
 		if("pitch" in obj){
 			$("#pitch-row").show();
 			$("#pitch-btn").text(obj.pitch ? "{{getString1(256)}}" : "{{getString1(257)}}").toggleClass("is-on", obj.pitch);
@@ -255,6 +261,7 @@ $("#subdelay-val").blur(() => {
 $("#subtitle-sel").click(() => {$.get("/toggle_subtitle");});
 $("#romanize-btn").click(() => {$.get("/toggle_romanize");});
 $("#pitch-btn").click(() => {$.get("/toggle_pitch");});
+$("#qr-btn").click(() => {$.get("/toggle_qr");});
 $("#delay-inc").click(() => {$.get("/audio_delay/+", function(data){$("#delay-val").text(parseFloat(data).toFixed(2))});});
 $("#delay-dec").click(() => {$.get("/audio_delay/-", function(data){$("#delay-val").text(parseFloat(data).toFixed(2))});});
 $("#subdelay-inc").click(() => {$.get("/subtitle_delay/+", function(data){$("#subdelay-val").text(parseFloat(data).toFixed(1))});});
@@ -370,6 +377,13 @@ hr, h1, h3, h4, p {
 				<h4 id="romanize-label" title="{{getString1(258)}}">{{getString1(253)}}</h4>
 				<h4 id="romanize-btn" class="tabs hand" title="{{getString1(258)}}">{{getString1(256)}}</h4>
 			</div>
+		</div>
+	</div>
+
+	<div id="qr-row" style="display: none">
+		<div class="is-flex" style="justify-content: space-between; align-items: center; margin-bottom: .6rem">
+			<h4 title="{{getString1(262)}}">{{getString1(261)}}</h4>
+			<h4 id="qr-btn" class="tabs hand" title="{{getString1(262)}}">{{getString1(256)}}</h4>
 		</div>
 	</div>
 

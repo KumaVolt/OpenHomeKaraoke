@@ -349,5 +349,5 @@ body > .container { padding-left: 14px !important; padding-right: 14px !importan
 #search-box::-webkit-search-cancel-button { filter: invert(1) opacity(.6); }
 
 /* romaji / pinyin switch in the tune controls */
-#romanize-btn, #pitch-btn { min-width: 3.5rem; text-align: center; }
-#romanize-btn.is-on, #pitch-btn.is-on { background: var(--pink); border-color: var(--pink); color: #fff; }
+#romanize-btn, #pitch-btn, #qr-btn { min-width: 3.5rem; text-align: center; }
+#romanize-btn.is-on, #pitch-btn.is-on, #qr-btn.is-on { background: var(--pink); border-color: var(--pink); color: #fff; }

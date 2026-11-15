@@ -174,8 +174,7 @@ class Karaoke:
 		if self.use_vlc:
 			# the QR overlay is added per song (tv_qr_overlay), sized for each video, rather than by the client
 			self.vlcclient = vlcclient.VLCClient(port = self.vlc_port, path = self.vlc_path, qrcode = None, url = self.url)
-			if self.show_overlay:
-				lyrics.SIDE_MARGIN = 180  # keep sung lines clear of the QR code in the corner
+			lyrics.SIDE_MARGIN = 180 if self.show_overlay else 60  # keep sung lines clear of the QR code in the corner
 		else:
 			self.omxclient = omxclient.OMXClient(path = self.omxplayer_path, adev = self.omxplayer_adev,
 			                                     dual_screen = self.dual_screen, volume_offset = self.volume_offset)
@@ -1163,6 +1162,13 @@ class Karaoke:
 		except Exception:
 			logging.warning('Pitch guide failed: ' + traceback.format_exc())
 			return None
+
+	def toggle_qr(self):
+		"""Show or hide the "Scan to sing" QR code that is pinned to the corner while songs play."""
+		self.show_overlay = not self.show_overlay
+		lyrics.SIDE_MARGIN = 180 if self.show_overlay else 60
+		if self.is_file_playing():
+			self.play_vocal(force = True)  # restarts VLC at the same position, with or without the overlay
 
 	def toggle_pitch(self):
 		self.lyrics_pitch = not self.lyrics_pitch
