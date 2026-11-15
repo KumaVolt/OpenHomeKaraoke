@@ -158,9 +158,16 @@ class VLCClient:
 			while self.process.poll() is not None:
 				pass
 
-			# wait for VLC HTTP is ready
+			# wait for VLC HTTP is ready; give up if VLC exits (e.g. a broken/partial file)
+			# or never reports a track, otherwise the whole player freezes
+			deadline = time.time() + 30
 			while True:
 				time.sleep(0.1)
+				if self.process.poll() is not None or time.time() > deadline:
+					logging.error("VLC did not start playing: " + file_path)
+					self.kill()
+					self.is_transposing = False
+					return ''
 				req = self.command("", False)
 				xml = req.text
 				if "<info name='Type'>Video</info>" not in xml and "<info name='Type'>Audio</info>" not in xml:
@@ -240,8 +247,8 @@ class VLCClient:
 					os.K.now_playing_filename = os.K.download_path + os.K.now_playing_filename
 				os.K.now_playing = os.K.filename_from_path(os.K.now_playing_filename)
 			return request
-		except:
-			logging.error("No active VLC process. Could not run command: " + command)
+		except Exception as e:
+			logging.error("No active VLC process. Could not run command: %s (%s)" % (command, repr(e)[:200]))
 			return SimpleNamespace(**{'text': self.last_status_text, 'status_code': 500})
 
 	def pause(self, save_status=True):

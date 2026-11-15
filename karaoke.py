@@ -33,6 +33,15 @@ def flash(message: str, category: str = "message", client_ip = ''):
 	ws_send(client_ip or request.remote_addr, f'showNotification("{message}", "{category}")')
 
 def cleanse_modules(name):
+	if name == 'yt_dlp':
+		# yt-dlp wraps urllib3's _PERCENT_RE on import; re-importing it wraps the wrapper,
+		# which breaks every `requests` call in this process (e.g. VLC status polling)
+		try:
+			import urllib3.util.url as u3url
+			while type(u3url._PERCENT_RE).__name__ == 'Urllib3PercentREOverride':
+				u3url._PERCENT_RE = u3url._PERCENT_RE.re
+		except Exception:
+			pass
 	try:
 		for module_name in sorted(sys.modules.keys()):
 			if module_name.startswith(name):
@@ -656,6 +665,9 @@ class Karaoke:
 				xml = self.vlcclient.play_file(file_path, self.volume, extra_params + extra_params1)
 			else:
 				xml = self.vlcclient.play_file_transpose(file_path, self.now_playing_transpose, self.volume, extra_params + extra_params1)
+			if not xml:	# VLC could not play this file, the run loop moves on to the next song
+				self.switchingSong = False
+				return
 			self.has_subtitle = "<info name='Type'>Subtitle</info>" in xml
 			self.has_video = "<info name='Type'>Video</info>" in xml
 			self.volume = round(float(self.vlcclient.get_val_xml(xml, 'volume')))
