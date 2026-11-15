@@ -151,14 +151,17 @@ calc() {
 # /dev/dri is available and a test encode works, which frees the CPU on small machines; otherwise libx264.
 # STREAM_ENCODER=x264 or vaapi forces one.
 VAAPI_DEVICE="${VAAPI_DEVICE:-/dev/dri/renderD128}"
+vaapiWorks(){  # $1: video filters for the screen's bgr0 frames
+	ffmpeg -v error -vaapi_device "$VAAPI_DEVICE" -f lavfi -i "testsrc=size=640x360:rate=30,format=bgr0" -t 0.3 \
+		-vf "$1" -c:v h264_vaapi -profile:v constrained_baseline -f null - 2>>/tmp/vaapi-test.log
+}
 pickEncoder(){
 	local want="${STREAM_ENCODER:-auto}"
-	if [ "$want" = "x264" ]; then
-		echo x264; return
-	fi
-	if [ -e "$VAAPI_DEVICE" ] && ffmpeg -v error -vaapi_device "$VAAPI_DEVICE" -f lavfi -i "testsrc=size=640x360:rate=30" -t 0.3 \
-			-vf "format=nv12,hwupload" -c:v h264_vaapi -profile:v constrained_baseline -f null - 2>/tmp/vaapi-test.log; then
-		echo vaapi; return
+	if [ "$want" != "x264" ] && [ -e "$VAAPI_DEVICE" ]; then
+		: >/tmp/vaapi-test.log
+		# best: the GPU also converts the colours (about a third of the CPU time of converting them on the CPU)
+		if vaapiWorks "hwupload,scale_vaapi=format=nv12"; then echo vaapi-gpu; return; fi
+		if vaapiWorks "format=nv12,hwupload"; then echo vaapi; return; fi
 	fi
 	if [ "$want" = "vaapi" ]; then
 		echo "STREAM_ENCODER=vaapi, but the hardware encoder at $VAAPI_DEVICE does not work (see /tmp/vaapi-test.log); using libx264" >&2
@@ -169,16 +172,24 @@ pickEncoder(){
 startCapture(){
 	echo -n "\"use strict\";var mimeCodec=[\"video/mp4; codecs=\\\"avc1.42c01f\\\"\",\"audio/mp4; codecs=\\\"mp4a.40.2\\\"\"];" > metadata.js
 
-	local SCALE="scale=trunc(iw*$VIDEOSCALE/2)*2:trunc(ih*$VIDEOSCALE/2)*2"
+	local SIZE="trunc(iw*$VIDEOSCALE/2)*2:trunc(ih*$VIDEOSCALE/2)*2"
 	local HW=() VIDEO=()
-	if [ "$(pickEncoder)" = "vaapi" ]; then
+	case "$(pickEncoder)" in
+	vaapi-gpu)
 		echo "Encoding the stream on the GPU (VAAPI, $VAAPI_DEVICE)" >&2
 		HW=(-vaapi_device "$VAAPI_DEVICE")
-		VIDEO=(-filter:v "$SCALE,format=nv12,hwupload" -c:v h264_vaapi -profile:v constrained_baseline)
-	else
+		VIDEO=(-filter:v "hwupload,scale_vaapi=w=trunc(iw*$VIDEOSCALE/2)*2:h=trunc(ih*$VIDEOSCALE/2)*2:format=nv12" -c:v h264_vaapi -profile:v constrained_baseline)
+		;;
+	vaapi)
+		echo "Encoding the stream on the GPU (VAAPI, $VAAPI_DEVICE; colours converted on the CPU)" >&2
+		HW=(-vaapi_device "$VAAPI_DEVICE")
+		VIDEO=(-filter:v "scale=$SIZE,format=nv12,hwupload" -c:v h264_vaapi -profile:v constrained_baseline)
+		;;
+	*)
 		echo "Encoding the stream on the CPU (libx264)" >&2
-		VIDEO=(-pix_fmt yuv420p -filter:v "$SCALE" -c:v libx264 -profile:v baseline -tune fastdecode -preset ultrafast)
-	fi
+		VIDEO=(-pix_fmt yuv420p -filter:v "scale=$SIZE" -c:v libx264 -profile:v baseline -tune fastdecode -preset ultrafast)
+		;;
+	esac
 
 	mkdir 0 1
 
