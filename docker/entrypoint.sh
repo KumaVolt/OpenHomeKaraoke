@@ -90,6 +90,9 @@ if [ "$ENABLE_STREAM" = "1" ]; then
 fi
 
 ARGS=(-d /songs)
+if [ "${SHOW_QR:-1}" != "0" ]; then
+	ARGS+=(--show-overlay)  # QR code in the corner while songs play, so people can add songs any time
+fi
 if [ "${WITH_VOCAL_SPLITTER:-false}" = "true" ]; then
 	# the vocal splitter only processes songs when these sub-folders exist
 	mkdir -p /songs/vocal /songs/nonvocal

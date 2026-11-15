@@ -19,6 +19,7 @@ import numpy as np
 
 API = 'https://lrclib.net/api/search'
 USER_AGENT = 'OpenHomeKaraoke (https://github.com/xuancong84/OpenHomeKaraoke)'
+SIDE_MARGIN = 60  # left/right margin of sung lines; wider when a QR code sits in the corner during songs
 ASS_VERSION = 6  # bump when the subtitle layout changes, so cached subtitle files are rebuilt
 DURATION_TOLERANCE = 8  # seconds; a bigger difference usually means a different recording or a long video intro
 
@@ -200,7 +201,10 @@ def to_ass(lines, font = 'Arial Unicode MS', roman_lang = None, notes = None):
 		if upcoming and upcoming[0] - end < 4:
 			events.append((t, end, 'Next', _joiner(upcoming[1]).join(_esc(w) for _, w in upcoming[1])))
 	body = ''.join('Dialogue: %d,%s,%s,%s,,0,0,0,,%s\n' % (e[4] if len(e) > 4 else 0, _ts(e[0]), _ts(e[1]), e[2], e[3]) for e in events)
-	return ASS_HEADER.replace('{font}', font) + body
+	header = ASS_HEADER.replace('{font}', font)
+	if SIDE_MARGIN != 60:
+		header = header.replace(',60,60,', ',%d,%d,' % (SIDE_MARGIN, SIDE_MARGIN))
+	return header + body
 
 
 def cache_paths(song_path, cache_dir):

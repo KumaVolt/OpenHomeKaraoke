@@ -107,6 +107,7 @@ Check with `id -u`, and if it's different, edit the `user:` line and the `/run/u
 | `ENABLE_STREAM` | `1` headless, `0` host | Whether to stream the screen on port 4000. |
 | `STREAM_PORT` | `4000` | Port of the TV stream inside the container. |
 | `VIDEO_FORMAT_SORT` | `vcodec:h264,res:720,fps:30,acodec:m4a` | Which YouTube video format to download (yt-dlp `-S`). The default prefers H.264 at up to 720p, which small machines can play smoothly; YouTube's default AV1 or VP9 at 1080p60 can stutter on them. On a fast machine try `res:1080`. |
+| `SHOW_QR` | `1` | Show a "Scan to sing" QR code in the bottom-right corner while songs play, so people can add songs without waiting for the screen between songs. `0` hides it. |
 | `STREAM_ENCODER` | `auto` | `auto` uses the GPU's video encoder (VAAPI) when `/dev/dri` is passed in and works, else the CPU. `x264` or `vaapi` forces one. |
 
 ### app.py options

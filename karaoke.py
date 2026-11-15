@@ -172,8 +172,10 @@ class Karaoke:
 
 		self.generate_qr_code()
 		if self.use_vlc:
-			self.vlcclient = vlcclient.VLCClient(port = self.vlc_port, path = self.vlc_path,
-			                                     qrcode = (self.qr_code_path if self.show_overlay else None), url = self.url)
+			# the QR overlay is added per song (tv_qr_overlay), sized for each video, rather than by the client
+			self.vlcclient = vlcclient.VLCClient(port = self.vlc_port, path = self.vlc_path, qrcode = None, url = self.url)
+			if self.show_overlay:
+				lyrics.SIDE_MARGIN = 180  # keep sung lines clear of the QR code in the corner
 		else:
 			self.omxclient = omxclient.OMXClient(path = self.omxplayer_path, adev = self.omxplayer_adev,
 			                                     dual_screen = self.dual_screen, volume_offset = self.volume_offset)
@@ -265,6 +267,51 @@ class Karaoke:
 
 	def is_network_connected(self):
 		return not len(self.ip) < 7
+
+	def tv_qr_overlay(self, file_path):
+		"""VLC options that pin a "Scan to sing" QR code to the bottom right while a song plays, so people can
+		add songs without waiting for the screen between songs. VLC draws it in the video's own pixels, so the
+		card is made to measure for the video's height (and cached per height)."""
+		if not self.show_overlay or self.hide_ip or not self.url:
+			return []
+		try:
+			out = subprocess.check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+			                               'stream=height', '-of', 'csv=p=0', file_path], timeout = 15, text = True)
+			h = int(out.split()[0])
+		except Exception:
+			return []  # audio-only, or can't tell: no overlay
+		path = os.path.join(self.base_path, 'qrcode_tv_%d.png' % h)
+		if not os.path.isfile(path):
+			try:
+				from PIL import Image, ImageDraw, ImageFont
+				qr = qrcode.QRCode(border = 2, error_correction = qrcode.constants.ERROR_CORRECT_M)
+				qr.add_data(self.url)
+				qr.make(fit = True)
+				n = qr.modules_count + 4
+				box = max(2, round(h * 0.17 / n))
+				qr.box_size = box
+				code = qr.make_image(fill_color = 'black', back_color = 'white').convert('RGBA')
+				T = lambda ii: getString(ii) or os.langs['en_US'][ii]
+				fs = max(10, round(h * 0.026))
+				try:
+					font = ImageFont.truetype(os.path.join(self.base_path, 'font', 'arial-unicode-ms.ttf'), fs)
+				except OSError:
+					font = ImageFont.load_default()
+				caption = T(244)
+				tw = ImageDraw.Draw(code).textlength(caption, font = font)
+				pad, margin = round(h * 0.012), round(h * 0.03)
+				cw = max(code.width, int(tw) + 2 * pad)
+				ch = code.height + fs + 2 * pad
+				img = Image.new('RGBA', (cw + margin, ch + margin), (0, 0, 0, 0))
+				d = ImageDraw.Draw(img)
+				d.rounded_rectangle((0, 0, cw - 1, ch - 1), radius = pad * 2, fill = (255, 255, 255, 255))
+				img.paste(code, ((cw - code.width) // 2, 0))
+				d.text((cw / 2, code.height + pad * 0.3), caption, font = font, fill = (40, 16, 48, 255), anchor = 'ma')
+				img.save(path)
+			except Exception:
+				logging.warning('Could not make the TV QR code: ' + traceback.format_exc())
+				return []
+		return ['--sub-source', 'logo{file=%s,position=10,opacity=235}' % path]
 
 	def generate_qr_code(self):
 		logging.debug("Generating URL QR code")
@@ -647,6 +694,7 @@ class Karaoke:
 					extra_params1 += [f'--sub-file={lyrics_file}']
 			if self.play_speed != 1:
 				extra_params1 += [f'--rate={self.play_speed}']
+			extra_params1 += self.tv_qr_overlay(file_path)
 			self.now_playing = self.filename_from_path(file_path)
 			self.now_playing_filename = file_path
 			self.is_paused = ('--start-paused' in extra_params1)
