@@ -186,7 +186,10 @@ networks:
     external: true
 ```
 
-Then create two hosts in your proxy:
+Or serve both from one domain: set `STREAM_URL` to `https://karaoke.example.com/tv/` and add a custom location
+`/tv/` that forwards to `openhomekaraoke:4000/` (the TV page works under a path).
+
+Otherwise create two hosts in your proxy:
 
 | Domain | Forward to | Notes |
 |---|---|---|

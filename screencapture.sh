@@ -235,7 +235,7 @@ startServer(){
 				width:100vw;
 			}
 		</style>
-		<script src="/metadata.js"></script>
+		<script src="metadata.js"></script>
 		<script>
 			"use strict";
 
@@ -365,7 +365,8 @@ startServer(){
 
 			function fetchNext(streamId) {
 				var segmentId = nextId[streamId];
-				httpRequest[streamId] = getArrayBuffer("/" + streamId + "/" + segmentId, function(buf) {
+				httpRequest[streamId] = getArrayBuffer(streamId + "/" + segmentId,  // relative, so the page also works behind a proxy path such as /tv/
+						 function(buf) {
 					httpRequest[streamId] = null;
 					nextId[streamId]++;
 					sourceBufferAppend(streamId, buf);
