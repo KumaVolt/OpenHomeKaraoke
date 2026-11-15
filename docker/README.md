@@ -66,6 +66,7 @@ Check with `id -u`, and if it's different, edit the `user:` line and the `/run/u
 | `HOST_IP` | auto-detected | IP address shown in the QR code and on-screen URL. Set it in headless mode. |
 | `PUBLIC_URL` | `http://<HOST_IP>:5000` | Full web UI URL for the QR code and screen, for use behind a reverse proxy (for example `https://karaoke.example.com`). |
 | `STREAM_URL` | `http://<HOST_IP>:4000` | Full TV stream URL shown on screen, for use behind a reverse proxy (for example `https://karaoke-tv.example.com`). |
+| `TRUST_PROXY` | off | Set to `1` behind a reverse proxy so the app sees each phone's real IP instead of the proxy's. Leave it off otherwise. |
 | `SCREEN_SIZE` | `1280x720` | Resolution of the virtual screen in headless mode (for example `1920x1080`). |
 | `OHK_MODE` | `headless` | `headless` or `host`. |
 | `ENABLE_STREAM` | `1` headless, `0` host | Whether to stream the screen on port 4000. |
@@ -118,6 +119,7 @@ services:
     environment:
       PUBLIC_URL: "https://karaoke.example.com"
       STREAM_URL: "https://karaoke-tv.example.com"
+      TRUST_PROXY: "1"   # use the client IP from the proxy's X-Forwarded-For header
     command: ["--admin-password", "change-me"]
     volumes:
       - ./songs:/songs

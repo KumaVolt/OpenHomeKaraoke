@@ -24,6 +24,11 @@ except ImportError:
 	from urllib import quote, unquote
 
 app = Flask(__name__)
+# Behind a reverse proxy every request comes from the proxy's IP, but clients are told
+# apart by IP, so trust the proxy's X-Forwarded-* headers when TRUST_PROXY is set
+if os.environ.get('TRUST_PROXY', '').lower() in ('1', 'true', 'yes'):
+	from werkzeug.middleware.proxy_fix import ProxyFix
+	app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.config['TEMPLATES_AUTO_RELOAD'] = True	##DEBUG
 app.secret_key = os.urandom(24)
 admin_password = K = args = None
@@ -37,7 +42,7 @@ getString2 = lambda ii: getString1(request.client_lang, ii)
 # Websocket handler
 @sock.route('/ws_init')
 def ws_init(sock):
-	key = sock.sock.getpeername()[0]
+	key = request.remote_addr
 	ip2websock[key] = sock
 	while sock.connected:
 		try:
