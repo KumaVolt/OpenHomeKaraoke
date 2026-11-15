@@ -143,11 +143,13 @@ The subtitle switch in the web UI turns them off for a song, and `--no-lyrics` t
 
 LRCLIB lyrics are timed per line, so on their own the colour fill can only sweep across a line at an even pace.
 With the vocal splitter image, each word is also timed against the vocals-only track once the song has been split,
-using a speech model (Meta's MMS forced aligner, through torchaudio), so the fill follows the singer: held notes
-stay lit, quick words go quickly. It runs once per song, at low priority, when the splitter has nothing else to do,
-and the result is cached in `songs/.lyrics/<song>.words.json`. The model (about 1.2 GB) is downloaded into
-`songs/.models/` the first time; timing a song takes about a minute or two on a small CPU. Lines it can't place
-confidently keep the per-line timing.
+so the fill follows the singer: held notes stay lit, quick words go quickly. Songs in English, French, German,
+Italian or Spanish are timed with a model trained on sung vocals ([Huang & Benetos](https://github.com/jhuang448/LyricsAlignment-Multilingual),
+MIT, 57 MB, a few seconds per song); other languages use a speech model (Meta's MMS forced aligner through
+torchaudio, about 1.2 GB, a minute or two per song on a small CPU). It runs once per song, at low priority, when the
+splitter has nothing else to do, and the result is cached in `songs/.lyrics/<song>.words.json`. Models are
+downloaded into `songs/.models/` the first time they're needed. Lines the model can't place confidently keep the
+per-line timing.
 
 ### Pitch guide
 

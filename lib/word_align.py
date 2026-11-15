@@ -1,23 +1,48 @@
 """Times every sung word, so the karaoke colour fill follows the singer instead of sweeping at an even pace.
 
-lrclib.net lyrics are timed per line only. Once the DNN vocal splitter has made a vocals-only track, a
-multilingual speech model (torchaudio's MMS forced aligner) lines the known lyric text up with that track and
-reports when each word starts and ends. Japanese, Chinese and Korean are aligned through their romanization.
+lrclib.net lyrics are timed per line only. Once the DNN vocal splitter has made a vocals-only track, a model
+lines the known lyric text up with that track and reports when each word starts and ends:
+ - English, French, German, Italian and Spanish: a phoneme recogniser trained on sung vocals (lib/singing_model.py,
+   57 MB). On hand-timed songs it placed 92% of word starts within 0.3 s, and runs in seconds.
+ - Any other language: a multilingual speech model (torchaudio's MMS forced aligner, ~1.2 GB), which knows more
+   languages but is less sure of drawn-out sung words. Japanese, Chinese and Korean go through their romanization.
 
 Each song is done once and the result is cached next to its lyrics (<song>.words.json); lines the model
 can't place with confidence keep the per-line timing. This runs inside the vocal splitter process, which
-already has torch and runs at the lowest CPU priority. The model (~1.2 GB) is downloaded on first use into
-<songs>/.models so it survives container updates.
+already has torch and runs at the lowest CPU priority. Models are downloaded on first use into <songs>/.models
+so they survive container updates.
 """
-import json, logging, os, re, subprocess, time
+import hashlib, json, logging, os, re, subprocess, time
 
-VERSION = 1
+VERSION = 2          # 2: the singing model for the languages it knows
 SR = 16000
 CHUNK = 30           # seconds of audio per model pass
 LEAD = 0.6           # a line's first word may start this much before its (singing-snapped) start
 MAX_LINE = 12        # seconds; longer windows are cut so a missing line can't swallow the next one
 
-_model = None
+SINGING_URL = ('https://raw.githubusercontent.com/jhuang448/LyricsAlignment-Multilingual/'
+               'ca1a3923d6c8bf7d20eefa1080f3f104a6173d38/checkpoints/checkpoint_Baseline')
+SINGING_SHA256 = 'd541bde0a0e2759c5eac1ee7b70e06169a2aada504bc2359a98c7de4344d4dfe'
+SINGING_LANGS = {'en': 'en-us', 'fr': 'fr-fr', 'de': 'de', 'it': 'it', 'es': 'es'}  # espeak voices
+# common short words, to tell the language of a song's lyrics
+_STOP = {
+	'en': 'the you i and to me my a it in your love is of be on that all we for so with what know oh baby no do can just like',
+	'fr': 'je tu le la les et de des un une est pas que qui mon ma moi toi pour dans ne plus sur avec nous vous comme',
+	'de': 'ich du und der die das nicht ist mein mich dich ein eine mit auf es wir sie so wie auch zu sich bin',
+	'it': 'il di che e la non un una per mi ti sei io tu ma come con più amore mio sono questo nel del',
+	'es': 'el la que de y no me te mi tu en un una es yo por con lo se más amor como para pero si',
+	'nl': 'ik je jij de het een en van niet is mijn me dat wat op zijn met voor maar ook nog wel als er zo',
+}
+_STOP = {k: set(v.split()) for k, v in _STOP.items()}
+
+
+class ModelUnavailable(Exception):
+	"""A model couldn't be loaded or downloaded; try again later instead of giving up on the song."""
+
+
+_model = None        # MMS
+_singing = None
+_espeak = {}
 _retry_at = 0        # after a failed model load, wait before trying again
 _lyrics_at = 0       # next time to look for split songs that still need lyrics
 
@@ -37,9 +62,9 @@ def load(song_path, cache_dir):
 		return None
 
 
-def _decode(path):
+def _decode(path, sr = SR):
 	import numpy as np
-	raw = subprocess.check_output(['ffmpeg', '-v', 'error', '-i', path, '-vn', '-ac', '1', '-ar', str(SR),
+	raw = subprocess.check_output(['ffmpeg', '-v', 'error', '-i', path, '-vn', '-ac', '1', '-ar', str(sr),
 	                               '-f', 's16le', '-'], timeout = 300)
 	return np.frombuffer(raw, np.int16).astype(np.float32) / 32768
 
@@ -54,10 +79,53 @@ def _get_model(model_dir):
 	return _model
 
 
+def _get_singing(model_dir):
+	global _singing
+	if _singing is None:
+		from lib import singing_model
+		path = os.path.join(model_dir, 'singing_baseline.pt')
+		if not os.path.isfile(path):
+			import requests
+			os.makedirs(model_dir, exist_ok = True)
+			data = requests.get(SINGING_URL, timeout = 300).content
+			if hashlib.sha256(data).hexdigest() != SINGING_SHA256:
+				raise ModelUnavailable('singing model download is incomplete or changed')
+			with open(path + '.part', 'wb') as fp:
+				fp.write(data)
+			os.replace(path + '.part', path)
+		_singing = singing_model.load(path)
+	return _singing
+
+
+def detect_language(words):
+	"""'en', 'fr', 'de', 'it', 'es' or 'nl' when the lyrics are clearly in it, else None."""
+	ws = [re.sub(r"[^\w']", '', w.lower()) for w in words]
+	if len(ws) < 8:
+		return None
+	hits = {k: sum(w in v for w in ws) for k, v in _STOP.items()}
+	best = max(hits, key = hits.get)
+	second = max(v for k, v in hits.items() if k != best)
+	return best if hits[best] >= max(4, 0.12 * len(ws)) and hits[best] >= 1.5 * second else None
+
+
+def _phonemes(words, lang):
+	"""Phoneme ids per word, in the singing model's phoneme set."""
+	from lib import singing_model as sm
+	if lang not in _espeak:
+		from phonemizer.backend import EspeakBackend
+		_espeak[lang] = EspeakBackend(SINGING_LANGS[lang])
+	from phonemizer.separator import Separator
+	clean = [re.sub(r"[^\w']", '', w.lower()) or 'a' for w in words]
+	out = []
+	for ph in _espeak[lang].phonemize(clean, separator = Separator(phone = ';', word = None), strip = True):
+		out.append([sm.PHONE_ID.get(p, sm.UNKNOWN) for p in ph.split(';') if p])
+	return out
+
+
 def release():
-	"""Free the model's memory (about 1.2 GB) when there is nothing left to align."""
-	global _model
-	_model = None
+	"""Free the models' memory when there is nothing left to align."""
+	global _model, _singing
+	_model = _singing = None
 	import gc
 	gc.collect()
 
@@ -92,33 +160,59 @@ def _spell(word, lang):
 	return re.sub(r"[^a-z']", '', unidecode(word).lower())
 
 
-def _align_line(em, fps, a, b, spelled, D):
-	"""(start, end) per word for one line's window [a, b) of frames, or None when the fit isn't believable."""
-	import torch
-	import torchaudio.functional as F
+def _tokens_mms(spelled, D):
+	"""Token ids and the word each belongs to (-1: none) for MMS: letters, with a 'star' around the line."""
 	toks, owner = [D['*']], [-1]
-	for wi, s in enumerate(spelled):
-		for ch in s:
+	for wi, w in enumerate(spelled):
+		for ch in w:
 			if ch in D:
 				toks.append(D[ch])
 				owner.append(wi)
-	toks.append(D['*'])
-	owner.append(-1)
-	if len(toks) <= 2 or (b - a) < 2 * len(toks):
+	return toks + [D['*']], owner + [-1]
+
+
+def _tokens_singing(phones):
+	"""Token ids and owners for the singing model: phonemes, with a word gap between words."""
+	from lib import singing_model as sm
+	toks, owner = [], []
+	for wi, ph in enumerate(phones):
+		if wi and toks:
+			toks.append(sm.SPACE)
+			owner.append(-1)
+		toks += ph
+		owner += [wi] * len(ph)
+	return toks, owner
+
+
+def _align_line_raw(em, fps, a, b, toks, owner, n, blank):
+	"""(start, end) per word (None for words with nothing to align) for frames [a, b), or None if it can't run."""
+	import torch
+	import torchaudio.functional as F
+	if sum(o >= 0 for o in owner) == 0 or (b - a) < len(toks) + sum(x == y for x, y in zip(toks, toks[1:])) + 2:
 		return None
-	ali, sc = F.forced_align(em[a:b][None], torch.tensor([toks], dtype = torch.int32), blank = 0)
-	spans = F.merge_tokens(ali[0], sc[0].exp())
+	try:
+		ali, sc = F.forced_align(em[a:b][None], torch.tensor([toks], dtype = torch.int32), blank = blank)
+	except RuntimeError:
+		return None
+	spans = F.merge_tokens(ali[0], sc[0].exp(), blank = blank)
 	if len(spans) != len(toks):
 		return None
-	out = [None] * len(spelled)
+	out = [None] * n
 	for sp, o in zip(spans, owner):
 		if o < 0:
 			continue
 		st, en = (a + sp.start) / fps, (a + sp.end) / fps
 		out[o] = [out[o][0], en] if out[o] else [st, en]
+	return out
+
+
+def _align_line(em, fps, a, b, toks, owner, n, blank, letters):
+	"""(start, end) per word for one line's window [a, b) of frames, or None when the fit isn't believable."""
+	out = _align_line_raw(em, fps, a, b, toks, owner, n, blank)
+	if out is None:
+		return None
 	timed = [w for w in out if w]
 	durs = sorted(e - s for s, e in timed)
-	letters = sum(len(x) for x in spelled)
 	if not timed or durs[len(durs) // 2] < 0.1 or timed[-1][1] - timed[0][0] < 0.05 * letters:
 		return None  # words squeezed into a few frames: the model found no singing to match them to
 	# words with nothing to align (a symbol, a lone dash) sit between their neighbours
@@ -136,24 +230,56 @@ def align(song_path, cache_dir, vocal_track, model_dir):
 	lines = lyrics.load(song_path, cache_dir, word_times = False)
 	if not lines:
 		return 0
-	lang = lyrics.language(song_path, cache_dir)
-	model, D = _get_model(model_dir)
-	wav = _decode(vocal_track)
-	em, fps = _emissions(wav, model)
+	roman = lyrics.language(song_path, cache_dir)          # ja / zh / ko
+	lang = None if roman else detect_language([w for L in lines for _, w in L[1]])
+	singing = lang in SINGING_LANGS
+	try:
+		if singing:
+			from lib import singing_model as sm
+			model, fps, blank = _get_singing(model_dir), sm.FPS, sm.BLANK
+		else:
+			(model, D), blank = _get_model(model_dir), 0
+	except ModelUnavailable:
+		raise
+	except Exception as e:
+		raise ModelUnavailable(repr(e)[:300])
+	if singing:
+		em = sm.emissions(model, _decode(vocal_track, sm.SR))
+	else:
+		em, fps = _emissions(_decode(vocal_track), model)
 	result, timed = [], 0
 	for i, (t, words, _) in enumerate(lines):
 		if not words:
 			result.append(None)
 			continue
+		ws = [w for _, w in words]
+		if singing:
+			phones = _phonemes(ws, lang)
+			toks, owner = _tokens_singing(phones)
+			letters = sum(len(re.sub(r'\W', '', w)) for w in ws)
+		else:
+			spelled = [_spell(w, roman) for w in ws]
+			toks, owner = _tokens_mms(spelled, D)
+			letters = sum(len(x) for x in spelled)
 		end = lines[i + 1][0] if i + 1 < len(lines) else t + 8
 		a, b = int(max(0, t - LEAD) * fps), int(min(end, t + MAX_LINE) * fps)
-		r = _align_line(em, fps, a, min(b, em.shape[0]), [_spell(w, lang) for _, w in words], D)
+		r = _align_line(em, fps, a, min(b, em.shape[0]), toks, owner, len(ws), blank, letters)
 		result.append(r)
 		timed += r is not None
 	with open(words_path(song_path, cache_dir), 'w', encoding = 'utf-8') as fp:
-		json.dump({'version': VERSION, 'lines': result}, fp)
-	logging.info('Word timing: %d of %d lines timed for %s' % (timed, sum(1 for L in lines if L[1]), os.path.basename(song_path)))
+		json.dump({'version': VERSION, 'model': 'singing' if singing else 'mms', 'language': lang or roman,
+		           'lines': result}, fp)
+	logging.info('Word timing (%s, %s): %d of %d lines timed for %s' % ('singing model' if singing else 'MMS',
+	             lang or roman or '?', timed, sum(1 for L in lines if L[1]), os.path.basename(song_path)))
 	return timed
+
+
+def _cached_version(song_path, cache_dir):
+	try:
+		with open(words_path(song_path, cache_dir), encoding = 'utf-8') as fp:
+			return json.load(fp).get('version')
+	except (OSError, ValueError, AttributeError):
+		return None
 
 
 def pending(song_dir, cache_dir):
@@ -169,7 +295,7 @@ def pending(song_dir, cache_dir):
 		vocal = os.path.join(song_dir, 'vocal', name + '.m4a')
 		if name.startswith('.') or not os.path.isfile(song) or not os.path.isfile(vocal):
 			continue
-		if os.path.isfile(lyrics.cache_paths(song, cache_dir)[0]) and not os.path.isfile(words_path(song, cache_dir)):
+		if os.path.isfile(lyrics.cache_paths(song, cache_dir)[0]) and _cached_version(song, cache_dir) != VERSION:
 			out.append((song, vocal))
 	return out
 
@@ -206,15 +332,13 @@ def run_pending(song_dir):
 	todo = pending(song_dir, cache_dir)
 	if not todo or time.time() < _retry_at:
 		return
-	try:
-		_get_model(os.path.join(song_dir, '.models'))
-	except Exception as e:  # no network for the first download, say; try again in a while
-		logging.warning('Word timing: could not load the model: %s' % repr(e)[:300])
-		_retry_at = time.time() + 600
-		return
 	for song, vocal in todo:
 		try:
 			align(song, cache_dir, vocal, os.path.join(song_dir, '.models'))
+		except ModelUnavailable as e:  # no network for the first download, say; try again in a while
+			logging.warning('Word timing: could not load the model: %s' % str(e)[:300])
+			_retry_at = time.time() + 600
+			break
 		except Exception as e:
 			logging.warning('Word timing failed for %s: %s' % (os.path.basename(song), repr(e)[:300]))
 			try:  # don't retry a song that fails every time

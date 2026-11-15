@@ -49,14 +49,16 @@ RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
 
 WORKDIR /app
 
-# Python dependencies. torch/librosa (only needed by the DNN vocal splitter) are
+# Python dependencies. torch/librosa (only needed by the DNN vocal splitter) and espeak-ng/phonemizer
+# (turn lyrics into phonemes for word timing) are
 # installed separately so the default image stays small.
 COPY requirements.txt /tmp/requirements.txt
 RUN grep -v -i -E '^\s*(torch|librosa|soundfile|spec_utils|futures|pip|setuptools|wheel)\b' /tmp/requirements.txt > /tmp/requirements-base.txt \
  && pip install -r /tmp/requirements-base.txt \
  && if [ "$WITH_VOCAL_SPLITTER" = "true" ]; then \
-        pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio \
-     && pip install librosa==0.10.0 soundfile opencv-python-headless ; \
+        apt-get update && apt-get install -y --no-install-recommends espeak-ng && rm -rf /var/lib/apt/lists/* \
+     && pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio \
+     && pip install librosa==0.10.0 soundfile opencv-python-headless phonemizer ; \
     fi \
  && rm /tmp/requirements*.txt
 
