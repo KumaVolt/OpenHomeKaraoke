@@ -89,50 +89,112 @@ def singing_curve(song_path, vocal_track = None):
 	return _clean(score > lo + 0.5 * (hi - lo))
 
 
-def _estimate_sing(words, gap):
-	sep_words = not all(len(w) == 1 and ord(w) > 0x2e80 for _, w in words)
-	return min(gap * 0.92, max(1.0, (0.42 if sep_words else 0.3) * len(words) + 0.3))
+def estimate_sing(words, gap):
+	"""Usual time to sing a line: about 0.3 s per CJK character (one syllable each) and 0.42 s per other word."""
+	units = 0.0
+	for _, w in words:
+		cjk = sum(1 for c in w if ord(c) > 0x2e80 and c.isalpha())
+		units += 0.3 * cjk + (0.42 if any(c.isalnum() and ord(c) <= 0x2e80 for c in w) else 0)
+	return min(gap * 0.92, max(1.0, units + 0.3))
 
 
-def align(song_path, lines, lrc_duration = None, song_duration = None, vocal_track = None):
-	"""lines: [(start, words), ...] from lyrics.parse_lrc.
-	Returns [(start, words, sung_seconds or None), ...] and a short summary for the log."""
-	active = singing_curve(song_path, vocal_track)
-	n = len(active)
-	if n == 0 or not active.any():
-		return [(t, w, None) for t, w in lines], 'no singing detected'
+_estimate_sing = estimate_sing
 
-	# what the lyrics say: singing from each line start for an estimated time
+
+SECTION_BREAK = 3.5  # seconds without lyrics that start a new section (an instrumental break)
+SECTION_SHIFT = 8    # how far a section may move on its own (seconds)
+
+
+def _model(lines, offsets, n):
+	"""What the lyrics say: singing from each line start (plus its offset) for an estimated time."""
 	model = np.zeros(n, np.float32)
 	for i, (t, words) in enumerate(lines):
 		if words:
 			gap = (lines[i + 1][0] if i + 1 < len(lines) else t + 6) - t
-			a, b = int(t * FPS), int((t + _estimate_sing(words, gap)) * FPS)
+			a, b = int((t + offsets[i]) * FPS), int((t + offsets[i] + _estimate_sing(words, gap)) * FPS)
 			model[max(0, a):max(0, min(n, b))] = 1
-	if not model.any():
-		return [(t, w, None) for t, w in lines], 'lyrics are outside the song'
+	return model
 
-	# overall shift: where the recording lengths differ (e.g. a video intro) allow a shift of about that much
+
+def _overlap(model, act, k):
+	"""Fraction of the model's singing that lands on detected singing when the model moves by k frames."""
+	n = len(act)
+	if k >= 0:
+		return float((model[:n - k] * act[k:]).sum() / max(1, model.sum()))
+	return float((model[-k:] * act[:n + k]).sum() / max(1, model.sum()))
+
+
+def _sections(lines):
+	"""Line indexes grouped into sections split at instrumental breaks."""
+	groups, last_end = [], None
+	for i, (t, words) in enumerate(lines):
+		if not words:
+			continue
+		if last_end is None or t - last_end >= SECTION_BREAK:
+			groups.append([])
+		groups[-1].append(i)
+		gap = (lines[i + 1][0] if i + 1 < len(lines) else t + 6) - t
+		last_end = t + _estimate_sing(words, gap)
+	return groups
+
+
+def align(song_path, lines, lrc_duration = None, song_duration = None, vocal_track = None, active = None):
+	"""lines: [(start, words), ...] from lyrics.parse_lrc.
+	Returns ([(start, words, sung_seconds or None), ...], summary for the log, fit score 0-1).
+	Pass `active` (from singing_curve) to reuse it when trying several lyrics for the same song."""
+	if active is None:
+		active = singing_curve(song_path, vocal_track)
+	n = len(active)
+	if n == 0 or not active.any():
+		return [(t, w, None) for t, w in lines], 'no singing detected', 0.0
+	act = active.astype(np.float32)
+	zero = [0.0] * len(lines)
+	model = _model(lines, zero, n)
+	if not model.any():
+		return [(t, w, None) for t, w in lines], 'lyrics are outside the song', 0.0
+
+	# 1. overall shift: where the recording lengths differ (e.g. a video intro) allow a shift of about that much
 	diff = (song_duration - lrc_duration) if song_duration and lrc_duration else None
 	lo, hi = (min(0, diff) - 5, max(0, diff) + 5) if diff is not None else (-15, 60)
-	act = active.astype(np.float32)
 	size = 1 << int(np.ceil(np.log2(2 * n)))
 	corr = np.fft.irfft(np.fft.rfft(act - act.mean(), size) * np.conj(np.fft.rfft(model, size)), size)
 	lags = np.arange(int(lo * FPS), int(hi * FPS) + 1)
-	scores = corr[lags % size]
-	best = int(lags[np.argmax(scores)])
-	hit = lambda k: float((np.roll(model, k)[max(0, k):] * act[max(0, k):]).sum() / model.sum()) if k >= 0 \
-		else float((np.roll(model, k)[:n + k] * act[:n + k]).sum() / model.sum())
-	hit0, hit_best = hit(0), hit(best)
+	best = int(lags[np.argmax(corr[lags % size])])
+	hit0, hit_best = _overlap(model, act, 0), _overlap(model, act, best)
 	shift = best / FPS if hit_best - hit0 > 0.08 else 0.0
 	summary = 'shift %+.2fs (lyrics on singing %d%% -> %d%%)' % (shift, hit0 * 100, (hit_best if shift else hit0) * 100)
+	offsets = [shift] * len(lines)
 
-	# per line: meet the nearest onset, and measure the phrase
+	# 2. sections: a cover or a TV/radio edit can have a longer or shorter break; let each section move on its own
+	moved_sections = 0
+	groups = _sections(lines)
+	for g, idx in enumerate(groups):
+		sec = [(t, w) if i in idx else (t, []) for i, (t, w) in enumerate(lines)]
+		m = _model(sec, offsets, n)
+		if m.sum() < FPS:  # too short to judge
+			continue
+		base = _overlap(m, act, 0)
+		k_range = range(-int(SECTION_SHIFT * FPS), int(SECTION_SHIFT * FPS) + 1, 2)
+		scores = [(_overlap(m, act, k), -abs(k), k) for k in k_range]
+		score, _, k = max(scores)
+		if score - base < 0.12:
+			continue
+		first = lines[idx[0]][0] + offsets[idx[0]] + k / FPS
+		prev_last = max((lines[i][0] + offsets[i] for i in groups[g - 1]), default = -1e9) if g else -1e9
+		if first <= prev_last + 1.0:  # keep sections in order
+			continue
+		for i in range(idx[0], (groups[g + 1][0] if g + 1 < len(groups) else len(lines))):
+			offsets[i] += k / FPS  # this section and its trailing pause
+		moved_sections += 1
+	if moved_sections:
+		summary += ', %d of %d sections moved on their own' % (moved_sections, len(groups))
+
+	# 3. per line: meet the nearest onset, and measure the phrase
 	onsets = np.flatnonzero(np.diff(active.astype(np.int8)) == 1) + 1
 
-	def place(shift):
+	def place(offsets):
 		out, deltas = [], []
-		starts = [t + shift for t, _ in lines]
+		starts = [t + offsets[i] for i, (t, _) in enumerate(lines)]
 		prev = -1e9
 		for i, (t, words) in enumerate(lines):
 			s = starts[i]
@@ -153,8 +215,9 @@ def align(song_path, lines, lrc_duration = None, song_duration = None, vocal_tra
 				j = f
 				while j < n and (active[j] or active[j:j + quiet].any()):
 					j += 1
-				# a breath or a quiet note can look like the end of the phrase; never trust less than half the usual pace
-				floor = 0.5 * _estimate_sing(words, nxt - s)
+				# a breath, a quiet note or a busy mix can look like the end of the phrase, and a fill that ends early
+				# races across the line; so measuring may only make a line slower than the usual pace, never faster
+				floor = _estimate_sing(words, nxt - s)
 				sung = min(max(floor, (j - f) / FPS + TAIL), max(0.3, (nxt - s) * 0.97))
 			moved_by = s - t
 			words = [(wt + moved_by if wt is not None else None, w) for wt, w in words]  # per-word times move along
@@ -162,11 +225,18 @@ def align(song_path, lines, lrc_duration = None, song_duration = None, vocal_tra
 			prev = s
 		return out, deltas
 
-	out, deltas = place(shift)
-	# second pass: if most lines had to move the same way, the overall shift was a bit off; move them all
+	out, deltas = place(offsets)
+	# second pass: if most lines had to move the same way, the shifts were a bit off; move them all
 	if len(deltas) >= 3 and abs(np.median(deltas)) > 0.05:
-		shift += float(np.median(deltas))
-		out, deltas = place(shift)
-		summary = 'shift %+.2fs (refined)' % shift + summary[summary.index(' ('):]
+		med = float(np.median(deltas))
+		offsets = [o + med for o in offsets]
+		out, deltas = place(offsets)
+		summary += ', refined %+.2fs' % med
 	moved = sum(abs(d) > 0.05 for d in deltas)
-	return out, summary + ', %d lines moved to the singing' % moved
+
+	# fit score for choosing between lyrics: how much of the lyrics land on singing, and how much singing is covered
+	final = _model([(s, w) for s, w, _ in out], [0.0] * len(out), n)
+	both = float((final * act).sum())
+	precision, recall = both / max(1, final.sum()), both / max(1, act.sum())
+	score = 2 * precision * recall / max(1e-9, precision + recall)
+	return out, summary + ', %d lines moved to the singing, fit %.2f' % (moved, score), score
