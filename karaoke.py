@@ -1,4 +1,4 @@
-import os, sys, io, random, time, json, datetime
+import os, sys, io, math, random, time, json, datetime
 import logging, socket, subprocess, threading
 import multiprocessing as mp
 import shutil, psutil, traceback, tarfile, requests
@@ -16,6 +16,7 @@ from bidi.algorithm import get_display
 from unidecode import unidecode
 from flask import request
 from lib import omxclient, vlcclient
+from lib.tvscreen import TVScreen
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString
@@ -326,71 +327,40 @@ class Karaoke:
 	def render_splash_screen(self):
 		if self.hide_splash_screen:
 			return
+		if not self.hide_ip and not self.is_network_connected():
+			self.screen.fill((0, 0, 0))
+			text = self.render_font(30, getString(48), (255, 255, 255))
+			self.screen.blit(text[0], self.normalize((20, 20)))
+			pygame.display.update()
+			time.sleep(10)
+			logging.info("No IP found. Network/Wifi configuration required. For wifi config, try: sudo raspi-config or the desktop GUI: startx")
+			self.stop()
+			return
+		if not hasattr(self, 'tv'):
+			self.tv = TVScreen()
+		self.tv.draw(self.screen, self.tv_state())
 
-		# Clear the screen and start
-		logging.debug("Rendering splash screen")
-		self.screen.fill((0, 0, 0))
-		blitY = self.ref_W*self.screen.get_height()//self.screen.get_width() - 40
-		sysfont_size = 30
-
-		# Draw logo and name
-		text = self.render_font(sysfont_size * 2, getString(136), (255, 255, 255))
-		if not hasattr(self, 'logo'):
-			self.logo = pygame.image.load(self.logo_path)
-		_, _, W, H = self.normalize(list(self.logo.get_rect()))
-		W, H = W/2, H/2
-		center = self.screen.get_rect().center
-		self.logo1 = pygame.transform.scale(self.logo, (W, H))
-		self.screen.blit(self.logo1, (center[0]-W/2, center[1]-H/2-text[1].height/2))
-		self.screen.blit(text[0], (center[0]-text[1].width/2, center[1]+H/2))
-
-		if not self.hide_ip:
-			qr_size = 150
-			if not hasattr(self, 'p_image'):
-				self.p_image = pygame.image.load(self.qr_code_path)
-			self.p_image1 = pygame.transform.scale(self.p_image, self.normalize((qr_size, qr_size)))
-			self.screen.blit(self.p_image1, self.normalize((20, blitY - 125)))
-			if not self.is_network_connected():
-				text = self.render_font(sysfont_size, getString(48), (255, 255, 255))
-				self.screen.blit(text[0], self.normalize((qr_size + 35, blitY)))
-				time.sleep(10)
-				logging.info("No IP found. Network/Wifi configuration required. For wifi config, try: sudo raspi-config or the desktop GUI: startx")
-				self.stop()
-			else:
-				text = self.render_font(sysfont_size, getString(49) + self.url, (255, 255, 255))
-				self.screen.blit(text[0], self.normalize((qr_size + 35, blitY)))
-				# Windows and Mac-OS should use screen projection and AirPlay
-				if self.streamer_alive():
-					text = self.render_font(sysfont_size, getString(50) + self.stream_url, (255, 255, 255))
-					self.screen.blit(text[0], self.normalize((qr_size + 35, blitY - 40)))
-				if not self.firstSongStarted:
-					text = self.render_font(sysfont_size, getString(51), (255, 255, 255))
-					self.screen.blit(text[0], self.normalize((qr_size + 35, blitY - 120)))
-					text = self.render_font(sysfont_size, getString(52), (255, 255, 255))
-					self.screen.blit(text[0], self.normalize((qr_size + 35, blitY - 80)))
-
-		blitY = 10
-		if not self.has_video:
-			logging.debug("Rendering current song to splash screen")
-			render_next_song = self.render_font([60, 50, 40], getString(58) + (self.now_playing or ''), (255, 255, 0))
-			render_next_user = self.render_font([50, 40, 30], getString(57) + (self.now_playing_user or ''), (0, 240, 0))
-			self.screen.blit(render_next_song[0], (self.screen.get_width() - render_next_song[1].width - 10, self.normalize(10)))
-			self.screen.blit(render_next_user[0], (self.screen.get_width() - render_next_user[1].width - 10, self.normalize(80)))
-			blitY += 140
-
-		if len(self.queue) >= 1:
-			logging.debug("Rendering next song to splash screen")
-			next_song = self.queue[0]["title"]
-			next_user = self.queue[0]["user"]
-			render_next_song = self.render_font([60, 50, 40], getString(56) + next_song, (255, 255, 0))
-			render_next_user = self.render_font([50, 40, 30], getString(57) + next_user, (0, 240, 0))
-			self.screen.blit(render_next_song[0], (self.screen.get_width() - render_next_song[1].width - 10, self.normalize(blitY)))
-			self.screen.blit(render_next_user[0], (self.screen.get_width() - render_next_user[1].width - 10, self.normalize(blitY+70)))
-		elif not self.firstSongStarted:
-			text1 = self.render_font(sysfont_size, getString(196) + ': ' + self.download_path, (255, 255, 0))
-			self.screen.blit(text1[0], self.normalize((20, 20)))
-			text2 = self.render_font(sysfont_size, getString(197) + ': %d'%len(self.available_songs), (255, 255, 0))
-			self.screen.blit(text2[0], self.normalize((20, 30+sysfont_size)))
+	def tv_state(self):
+		"""What the TV screen shows between songs (see lib/tvscreen.py)."""
+		T = lambda ii: getString(ii) or os.langs['en_US'][ii]
+		short = lambda url: url.split('://', 1)[-1]
+		st = {'app_name': T(136), 'logo': self.logo_path,
+		      'qr': None if self.hide_ip else self.qr_code_path, 'url': short(self.url)}
+		remaining = getattr(self, 'ready_until', 0) - time.time()
+		if remaining > 0 and self.queue:
+			st.update(mode = 'ready', label = T(250), singer = self.queue[0]['user'], title = self.queue[0]['title'],
+			          countdown = T(251) % math.ceil(remaining), progress = 1 - remaining / max(self.splash_delay, 0.1))
+		elif self.now_playing and not self.has_video:  # audio-only song: nothing else draws on the screen
+			st.update(mode = 'list', label = T(242), title = self.now_playing, singer = self.now_playing_user,
+			          rows_label = T(240), rows = [(q['title'], q['user']) for q in self.queue[:3]], rows_start = 1, qr_heading = T(243))
+		elif self.queue:
+			st.update(mode = 'list', label = T(240), title = self.queue[0]['title'], singer = self.queue[0]['user'],
+			          rows_label = T(241), rows = [(q['title'], q['user']) for q in self.queue[1:4]], rows_start = 2, qr_heading = T(243))
+		else:
+			st.update(mode = 'empty', label = T(245), headline = T(246) if st['qr'] else T(252), body = T(247),
+			          qr_heading = T(244), footer_left = T(248) % len(self.available_songs),
+			          footer_right = (T(249) + short(self.stream_url)) if self.streamer_alive() else '')
+		return st
 
 	def render_font(self, sizes, text, *kargs):
 		if type(sizes) != list:
@@ -1201,10 +1171,11 @@ class Karaoke:
 				if self.queue:
 					if not self.is_file_playing():
 						self.reset_now_playing()
+						self.ready_until = time.time() + self.splash_delay  # shows the "Get ready" card
 						self.render_splash_screen()
-						tm = time.time()
-						while time.time()-tm < self.splash_delay:
+						while time.time() < self.ready_until:
 							self.handle_run_loop()
+						self.ready_until = 0
 						head = self.queue.pop(0)
 						self.play_file(head['file'])
 						if self.cloud:
