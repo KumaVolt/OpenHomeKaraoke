@@ -402,12 +402,14 @@ startServer(){
 			}
 
 			window.addEventListener("load", function() {
-				if(!("MediaSource" in window)) {
-					alert("MediaSource API not supported.");
+				// iPhones have no MediaSource; since iOS 17.1 they have ManagedMediaSource, which works the same way
+				var MSource = window.ManagedMediaSource || window.MediaSource;
+				if(!MSource) {
+					alert("This browser can't play the live TV stream. On an iPhone, update to iOS 17.1 or later.");
 				}
 				else {
 					for(var i = 0; i < mimeCodec.length; i++) {
-						if(!MediaSource.isTypeSupported(mimeCodec[i])) {
+						if(!MSource.isTypeSupported(mimeCodec[i])) {
 							alert("Unsupported media type or codec: " + mimeCodec[i]);
 						}
 						nextId.push(0);
@@ -416,7 +418,7 @@ startServer(){
 						queuedAppend.push(null);
 					}
 
-					mediaSource = new MediaSource();
+					mediaSource = new MSource();
 					mediaSource.addEventListener("sourceopen", function() {
 						for(var i = 0; i < mimeCodec.length; i++) {
 							sourceBuffer[i] = mediaSource.addSourceBuffer(mimeCodec[i]);
@@ -428,6 +430,9 @@ startServer(){
 					}, false);
 
 					videoElement = document.querySelector("video#v");
+					if(window.ManagedMediaSource && MSource === window.ManagedMediaSource) {
+						videoElement.disableRemotePlayback = true; // Safari only plays ManagedMediaSource with AirPlay off
+					}
 					videoElement.src = URL.createObjectURL(mediaSource);
 
 					var unmute = document.getElementById("unmute");
