@@ -49,12 +49,28 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 
-def clean_title(name):
-	"""'Queen - Bohemian Rhapsody (Official Video) [4K]' -> 'Queen Bohemian Rhapsody'"""
+SEPARATORS = re.compile(r'\s[-–—~]+\s|[|│｜]+|\s[-–—]+|[-–—]+\s')
+
+
+def title_parts(name):
+	"""'Anime Opening 2│Artist - Song (Official Video)' -> ['Anime Opening 2', 'Artist', 'Song']"""
 	name = BRACKETS.sub(' ', name)
 	name = NOISE.sub(' ', name)
-	name = re.sub(r'[-–—|_~"“”]+', ' ', name)
-	return ' '.join(name.split())
+	parts = [re.sub(r'[_~"“”＂]+', ' ', p) for p in SEPARATORS.split(name)]
+	return [' '.join(p.split()) for p in parts if p.split()]
+
+
+def clean_title(name):
+	"""'Queen - Bohemian Rhapsody (Official Video) [4K]' -> 'Queen Bohemian Rhapsody'"""
+	return ' '.join(title_parts(name))
+
+
+def queries(name):
+	"""The whole cleaned title, then without its leading parts: video titles often start with a show or game name
+	('Fullmetal Alchemist Brotherhood Opening 2 | Artist - Song') that LRCLIB does not know."""
+	parts = title_parts(name)
+	out = [' '.join(parts[i:]) for i in range(max(1, len(parts) - 1))]
+	return out or [clean_title(name)]
 
 
 def media_info(path):
@@ -71,9 +87,13 @@ def media_info(path):
 def search(name, duration, limit = 6):
 	"""LRCLIB entries with synced lyrics, best guesses first: same length as our file, then the rest.
 	The caller picks between them by how well each fits the singing heard in the song."""
-	r = requests.get(API, params = {'q': clean_title(name)}, headers = {'User-Agent': USER_AGENT}, timeout = 6)
-	r.raise_for_status()
-	hits = [h for h in r.json() if h.get('syncedLyrics')]
+	hits = []
+	for q in queries(name):
+		r = requests.get(API, params = {'q': q}, headers = {'User-Agent': USER_AGENT}, timeout = 6)
+		r.raise_for_status()
+		hits = [h for h in r.json() if h.get('syncedLyrics')]
+		if hits:
+			break
 	seen, unique = set(), []
 	for h in hits:  # the same lyrics are often uploaded several times
 		key = h['syncedLyrics'].strip()
