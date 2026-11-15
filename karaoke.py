@@ -17,7 +17,7 @@ from unidecode import unidecode
 from flask import request
 from lib import omxclient, vlcclient
 from lib.tvscreen import TVScreen
-from lib import lyrics
+from lib import lyrics, pitch
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString
@@ -70,6 +70,7 @@ class Karaoke:
 	has_video = True
 	has_subtitle = False
 	lyrics_romanize = True    # show romaji/pinyin under Japanese/Chinese/Korean synced lyrics
+	lyrics_pitch = False      # optional pitch guide lane; needs a vocals-only track from the DNN vocal splitter
 	subtitle_delay = 0
 	play_speed = 1.0
 	show_subtitle = True
@@ -1073,14 +1074,37 @@ class Karaoke:
 
 	def lyrics_file(self, song_path):
 		"""Subtitle file with the cached synced lyrics for a song, if any (see lib/lyrics.py).
-		Japanese, Chinese and Korean lyrics get a romanized line under them unless it is switched off."""
-		if getattr(self, 'no_lyrics', False):
+		Japanese, Chinese and Korean lyrics get a romanized line under them unless it is switched off,
+		and the pitch guide lane is added when it is switched on and the song has a vocals-only track."""
+		notes = self.pitch_notes(song_path) if self.lyrics_pitch else None
+		if getattr(self, 'no_lyrics', False) and not notes:
 			return None
 		try:
-			return lyrics.subtitle_file(song_path, self.lyrics_cache_dir(), self.lyrics_romanize)
+			if notes and not lyrics.load(song_path, self.lyrics_cache_dir()) and lyrics.media_info(song_path)[1]:
+				notes = None  # the file has its own subtitles; keep them rather than replacing them with the lane
+			return lyrics.subtitle_file(song_path, self.lyrics_cache_dir(), self.lyrics_romanize, notes)
 		except Exception:
 			logging.warning('Could not build the lyrics subtitle: ' + traceback.format_exc())
 			return None
+
+	def vocal_track(self, song_path):
+		"""The DNN vocal splitter's vocals-only track for a song (it may not exist yet)."""
+		return self.download_path + 'vocal/' + os.path.basename(song_path) + '.m4a'
+
+	def has_pitch_source(self):
+		return bool(self.now_playing_filename) and os.path.isfile(self.vocal_track(self.now_playing_filename))
+
+	def pitch_notes(self, song_path):
+		try:
+			return pitch.load(song_path, self.lyrics_cache_dir(), self.vocal_track(song_path))
+		except Exception:
+			logging.warning('Pitch guide failed: ' + traceback.format_exc())
+			return None
+
+	def toggle_pitch(self):
+		self.lyrics_pitch = not self.lyrics_pitch
+		if self.is_file_playing() and self.show_subtitle and self.has_pitch_source():
+			self.play_vocal(force = True)  # restarts VLC at the same position with the other subtitle file
 
 	def lyrics_language(self):
 		"""'ja', 'zh' or 'ko' when the playing song's lyrics can be romanized."""
@@ -1103,7 +1127,9 @@ class Karaoke:
 		def job():
 			try:
 				lyrics.prepare(song_path, self.lyrics_cache_dir(), self.filename_from_path(song_path),
-				               vocal_track = self.download_path + 'vocal/' + os.path.basename(song_path) + '.m4a')
+				               vocal_track = self.vocal_track(song_path))
+				if self.lyrics_pitch:
+					self.pitch_notes(song_path)  # work out the notes now rather than when the song starts
 			except Exception:
 				logging.warning('Lyrics lookup crashed: ' + traceback.format_exc())
 		th = threading.Thread(target = job, daemon = True)

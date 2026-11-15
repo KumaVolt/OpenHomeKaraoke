@@ -256,3 +256,5 @@ Romanization
 On
 Off
 Show the pronunciation in Latin letters under the lyrics
+Pitch guide
+Shows the melody's notes above the lyrics. Works for songs the vocal splitter has processed.

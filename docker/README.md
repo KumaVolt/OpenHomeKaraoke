@@ -119,6 +119,14 @@ vocal splitter has made one) and lines the lyrics up with it, which also handles
 If they still run early or late, use the subtitle delay control in the web UI.
 The subtitle switch in the web UI turns them off for a song, and `--no-lyrics` turns the lookup off completely.
 
+### Pitch guide
+
+With the vocal splitter image, songs it has processed can show the melody above the lyrics: each note is a bar
+(higher bar, higher note), a playhead moves across with the music, and the notes light up as they're sung.
+Turn it on with the **Pitch guide** switch on the phone's home tab; it's off by default and only appears for
+songs that have a vocals-only track. The notes are read from that track, so they follow the recording's own
+singer. Splitting is slow on a CPU (several minutes per song), so a newly downloaded song gets its guide later.
+
 ### YouTube cookies
 
 If YouTube asks yt-dlp to sign in, export your browser cookies to a `cookies.txt` file, mount it,

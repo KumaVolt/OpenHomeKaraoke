@@ -15,10 +15,11 @@ so the fill runs as long as the singing does.
 """
 import os, re, json, logging, subprocess
 import requests
+import numpy as np
 
 API = 'https://lrclib.net/api/search'
 USER_AGENT = 'OpenHomeKaraoke (https://github.com/xuancong84/OpenHomeKaraoke)'
-ASS_VERSION = 4  # bump when the subtitle layout changes, so cached subtitle files are rebuilt
+ASS_VERSION = 5  # bump when the subtitle layout changes, so cached subtitle files are rebuilt
 DURATION_TOLERANCE = 8  # seconds; a bigger difference usually means a different recording or a long video intro
 
 BRACKETS = re.compile(r'[\(\[\{【（].*?[\)\]\}】）]')
@@ -40,6 +41,7 @@ Style: Sing,{font},58,&H00A53EFF,&H00FFEEF4,&H00301026,&H00000000,-1,0,0,0,100,1
 Style: SingHigh,{font},58,&H00A53EFF,&H00FFEEF4,&H00301026,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,2,60,60,150,1
 Style: Roman,{font},34,&H00A53EFF,&H00FFEEF4,&H00301026,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,2,60,60,106,1
 Style: Next,{font},40,&H00C99BA9,&H00C99BA9,&H00301026,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,2,60,60,46,1
+Style: Lane,{font},20,&H00FFFFFF,&H00FFFFFF,&H00A53EFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -144,10 +146,11 @@ def _roman_text(units, sep, lead, lang):
 	return ' '.join(out.split())
 
 
-def to_ass(lines, font = 'Arial Unicode MS', roman_lang = None):
+def to_ass(lines, font = 'Arial Unicode MS', roman_lang = None, notes = None):
 	"""lines: [(start, words[, sung_seconds]), ...]. With roman_lang ('ja', 'zh', 'ko') a romanized line is
-	shown under each sung line, filling in step with it."""
-	events = []
+	shown under each sung line, filling in step with it. With notes ([(start, end, midi), ...]) a pitch guide
+	lane is drawn above the lyrics."""
+	events = pitch_events(lines, notes) if notes else []
 	sing_style = 'SingHigh' if roman_lang else 'Sing'
 	sung = [(L[0], L[1]) for L in lines if L[1]]
 	if sung:  # show the first line a few seconds before it is sung
@@ -185,7 +188,7 @@ def to_ass(lines, font = 'Arial Unicode MS', roman_lang = None):
 		upcoming = next((L for L in lines[i + 1:] if L[1]), None)  # (start, words, ...)
 		if upcoming and upcoming[0] - end < 4:
 			events.append((t, end, 'Next', _joiner(upcoming[1]).join(_esc(w) for _, w in upcoming[1])))
-	body = ''.join('Dialogue: 0,%s,%s,%s,,0,0,0,,%s\n' % (_ts(a), _ts(b), style, text) for a, b, style, text in events)
+	body = ''.join('Dialogue: %d,%s,%s,%s,,0,0,0,,%s\n' % (e[4] if len(e) > 4 else 0, _ts(e[0]), _ts(e[1]), e[2], e[3]) for e in events)
 	return ASS_HEADER.replace('{font}', font) + body
 
 
@@ -210,18 +213,69 @@ def language(song_path, cache_dir):
 	return romanize.detect(w for L in lines for _, w in L[1]) if lines else None
 
 
-def subtitle_file(song_path, cache_dir, romanized = True):
-	"""Path of the subtitle file to give VLC, built from the cached lyrics, or None."""
+def subtitle_file(song_path, cache_dir, romanized = True, notes = None):
+	"""Path of the subtitle file to give VLC, built from the cached lyrics and/or the pitch guide notes, or None."""
 	lines = load(song_path, cache_dir)
-	if lines is None:
+	if lines is None and not notes:
 		return None
-	lang = language(song_path, cache_dir) if romanized else None
-	src = cache_paths(song_path, cache_dir)[0]
-	ass = src[:-5] + ('.%s.v%d.ass' % (lang, ASS_VERSION) if lang else '.v%d.ass' % ASS_VERSION)
-	if not os.path.isfile(ass) or os.path.getmtime(ass) < os.path.getmtime(src):
-		with open(ass, 'w', encoding = 'utf-8') as fp:
-			fp.write(to_ass(lines, roman_lang = lang))
+	lang = language(song_path, cache_dir) if romanized and lines else None
+	base = cache_paths(song_path, cache_dir)[0][:-5]
+	ass = base + ('.' + lang if lang else '') + ('.pitch' if notes else '') + '.v%d.ass' % ASS_VERSION
+	os.makedirs(cache_dir, exist_ok = True)
+	with open(ass, 'w', encoding = 'utf-8') as fp:  # cheap to build, so always fresh
+		fp.write(to_ass(lines or [], roman_lang = lang, notes = notes))
 	return ass
+
+
+# ---------- pitch guide lane ----------
+LANE = (170, 40, 1110, 170)   # x0, y0, x1, y1 on the 1280x720 subtitle canvas, above the picture's centre
+PAGE_MAX = 8.0                # seconds of melody on one page at most
+
+
+def _rrect(x0, y0, x1, y1, r):
+	"""ASS drawing commands for a rectangle with rounded corners."""
+	r = max(0, min(r, (x1 - x0) / 2, (y1 - y0) / 2))
+	x0, y0, x1, y1, r = (int(round(v)) for v in (x0, y0, x1, y1, r))
+	return ('m %d %d l %d %d b %d %d %d %d %d %d l %d %d b %d %d %d %d %d %d l %d %d b %d %d %d %d %d %d l %d %d b %d %d %d %d %d %d '
+	        % (x0 + r, y0, x1 - r, y0, x1, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1, x1, y1, x1 - r, y1,
+	           x0 + r, y1, x0, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0, x0, y0, x0 + r, y0))
+
+
+def _pages(lines, notes):
+	"""[(start, end)] spans shown one at a time: one lyric line each when there are lyrics, split at most every PAGE_MAX s."""
+	first, last = notes[0][0], max(n[1] for n in notes)
+	marks = sorted({round(L[0], 2) for L in lines if L[1]} | {round(first - 0.3, 2)})
+	marks = [m for m in marks if m < last] + [round(last + 0.3, 2)]
+	pages = []
+	for a, b in zip(marks, marks[1:]):
+		k = int(np.ceil((b - a) / PAGE_MAX)) if b - a > PAGE_MAX else 1
+		pages += [(a + (b - a) * j / k, a + (b - a) * (j + 1) / k) for j in range(k)]
+	return [(a, b) for a, b in pages if any(n[0] < b and n[1] > a for n in notes)]
+
+
+def pitch_events(lines, notes):
+	"""The pitch guide: each page shows the notes to sing as bars (higher bar = higher note), a playhead
+	sweeps across with the music, and the bars light up as it passes them."""
+	X0, Y0, X1, Y1 = LANE
+	events = []
+	for p0, p1 in _pages(lines, notes):
+		page = [(max(a, p0), min(b, p1), m) for a, b, m in notes if a < p1 and b > p0 and min(b, p1) - max(a, p0) > 0.05]
+		lo, hi = min(m for _, _, m in page), max(m for _, _, m in page)
+		span = max(10, hi - lo + 3)  # a semitone of room above and below
+		lo = (lo + hi) / 2 - span / 2
+		row = (Y1 - Y0) / span
+		xt = lambda t: X0 + (t - p0) / (p1 - p0) * (X1 - X0)
+		bars = ''.join(_rrect(xt(a), Y1 - (m - lo + 0.5) * row - 6, xt(b) - 2, Y1 - (m - lo + 0.5) * row + 6, 6) for a, b, m in page)
+		ms = int(round((p1 - p0) * 1000))
+		pos = '\\an7\\pos(0,0)\\shad0'
+		events.append((p0, p1, 'Lane', '{%s\\bord1.5\\1c&H2A0E22&\\1a&H28&\\3c&HA53EFF&\\3a&H90&\\p1}%s' % (pos, _rrect(X0 - 18, Y0 - 12, X1 + 18, Y1 + 12, 16)), 0))
+		events.append((p0, p1, 'Lane', '{%s\\bord0\\1c&HFFEEF4&\\1a&H98&\\p1}%s' % (pos, bars), 1))
+		events.append((p0, p1, 'Lane', '{%s\\bord2\\blur2\\1c&HA53EFF&\\3c&HA53EFF&\\3a&H80&\\clip(%d,0,%d,720)\\t(0,%d,\\clip(%d,0,%d,720))\\p1}%s'
+		               % (pos, X0, X0, ms, X0, X1, bars), 2))
+		playhead = _rrect(0, 0, 3, Y1 - Y0 + 16, 1.5)
+		events.append((p0, p1, 'Lane', '{\\an7\\move(%d,%d,%d,%d)\\shad0\\bord0\\1c&HFFFFFF&\\1a&H30&\\p1}%s'
+		               % (X0 - 1, Y0 - 8, X1 - 1, Y0 - 8, playhead), 3))
+	return events
 
 
 def pick(song_path, hits, duration, vocal_track = None):

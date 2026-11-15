@@ -219,6 +219,8 @@ def nowplaying(return_json=True):
 			if lang:
 				rc['romanize'] = K.lyrics_romanize
 				rc['romanize_lang'] = lang
+		if K.has_pitch_source():
+			rc['pitch'] = K.lyrics_pitch
 		return json.dumps(rc) if return_json else rc
 	except Exception as e:
 		logging.error(f"Problem loading /nowplaying, pikaraoke may still be starting up: {e}\n{traceback.print_exc()}")
@@ -454,6 +456,12 @@ def toggle_subtitle():
 @app.route("/toggle_romanize")
 def toggle_romanize():
 	K.toggle_romanize()
+	return ''
+
+
+@app.route("/toggle_pitch")
+def toggle_pitch():
+	K.toggle_pitch()
 	return ''
 
 
