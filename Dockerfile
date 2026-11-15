@@ -56,7 +56,11 @@ RUN useradd --create-home --uid 1000 --shell /bin/bash karaoke \
  && chown karaoke:karaoke /songs /app
 
 COPY --chown=karaoke:karaoke . /app
-RUN chmod +x /app/docker/entrypoint.sh /app/screencapture.sh
+RUN chmod +x /app/docker/entrypoint.sh /app/screencapture.sh \
+ # let VLC's subtitle renderer use the bundled Unicode font for synced lyrics in any language
+ && mkdir -p /usr/local/share/fonts \
+ && ln -s /app/font/arial-unicode-ms.ttf /usr/local/share/fonts/ \
+ && fc-cache -f
 
 USER karaoke
 

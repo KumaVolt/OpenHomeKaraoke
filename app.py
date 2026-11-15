@@ -1111,6 +1111,11 @@ if __name__ == "__main__":
 		default = default_log_level,
 	)
 	parser.add_argument(
+		"--no-lyrics",
+		action = "store_true",
+		help = "Don't look up synced lyrics on lrclib.net for songs that have none.",
+	)
+	parser.add_argument(
 		"--hide-ip",
 		action = "store_true",
 		help = "Hide IP address from the screen.",

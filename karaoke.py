@@ -17,6 +17,7 @@ from unidecode import unidecode
 from flask import request
 from lib import omxclient, vlcclient
 from lib.tvscreen import TVScreen
+from lib import lyrics
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString
@@ -624,6 +625,9 @@ class Karaoke:
 				extra_params1 += [f'--sub-delay={self.subtitle_delay * 10}']
 			if self.show_subtitle:
 				extra_params1 += [f'--sub-track=0']
+				lyrics_file = self.lyrics_file(file_path)
+				if lyrics_file:
+					extra_params1 += [f'--sub-file={lyrics_file}']
 			if self.play_speed != 1:
 				extra_params1 += [f'--rate={self.play_speed}']
 			self.now_playing = self.filename_from_path(file_path)
@@ -1062,6 +1066,29 @@ class Karaoke:
 		self.last_vocal_info = 0
 		self.play_speed = 1
 
+	def lyrics_cache_dir(self):
+		return os.path.join(self.download_path, '.lyrics')
+
+	def lyrics_file(self, song_path):
+		"""Cached synced-lyrics subtitle for a song, if one was found (see lib/lyrics.py)."""
+		if getattr(self, 'no_lyrics', False):
+			return None
+		ass = lyrics.cache_paths(song_path, self.lyrics_cache_dir())[0]
+		return ass if os.path.isfile(ass) else None
+
+	def fetch_lyrics(self, song_path):
+		"""Look up lyrics in the background while the "Get ready" card counts down."""
+		if getattr(self, 'no_lyrics', False):
+			return None
+		def job():
+			try:
+				lyrics.prepare(song_path, self.lyrics_cache_dir(), self.filename_from_path(song_path))
+			except Exception:
+				logging.warning('Lyrics lookup crashed: ' + traceback.format_exc())
+		th = threading.Thread(target = job, daemon = True)
+		th.start()
+		return th
+
 	def streamer_alive(self):
 		for p in psutil.process_iter():
 			try:
@@ -1175,8 +1202,9 @@ class Karaoke:
 					if not self.is_file_playing():
 						self.reset_now_playing()
 						self.ready_until = time.time() + self.splash_delay  # shows the "Get ready" card
+						lyrics_job = self.fetch_lyrics(self.queue[0]['file'])
 						self.render_splash_screen()
-						while time.time() < self.ready_until:
+						while time.time() < self.ready_until or (lyrics_job and lyrics_job.is_alive() and time.time() < self.ready_until + 3):
 							self.handle_run_loop()
 						self.ready_until = 0
 						head = self.queue.pop(0)

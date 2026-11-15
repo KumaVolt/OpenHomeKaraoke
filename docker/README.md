@@ -93,6 +93,14 @@ docker compose up -d --build
 
 This adds about 1–2 GB to the image. Splitting runs on the CPU in the background, so it's slow on small devices.
 
+### Synced lyrics
+
+Songs without lyrics of their own (not a karaoke video, no subtitles in the file) get time-synced lyrics from
+[LRCLIB](https://lrclib.net), a free, open lyrics database. They're looked up during the "Get ready" countdown,
+cached in `songs/.lyrics/`, and shown over the video with a karaoke colour fill.
+If they run early or late (for example a music video with a long intro), use the subtitle delay control in the web UI.
+The subtitle switch in the web UI turns them off for a song, and `--no-lyrics` turns the lookup off completely.
+
 ### YouTube cookies
 
 If YouTube asks yt-dlp to sign in, export your browser cookies to a `cookies.txt` file, mount it,
