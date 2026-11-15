@@ -195,7 +195,7 @@ startCapture(){
 
 	ffmpeg \
 		-loglevel "$LOGLEVEL" "${HW[@]}" \
-		-f x11grab -framerate "$FRAMERATE" -s:size "$CAPTURESIZE" -thread_queue_size 64 -i "$DISPLAYNAME+$CAPTUREORIGIN" \
+		-f x11grab -draw_mouse 0 -framerate "$FRAMERATE" -s:size "$CAPTURESIZE" -thread_queue_size 64 -i "$DISPLAYNAME+$CAPTUREORIGIN" \
 		-f "$SOUNDSERVER" -thread_queue_size 1024 -itsoffset "$AUDIODELAY" -i "$AUDIODEVICE" \
 		-filter:a "aresample=first_pts=0" \
 		-c:a aac -strict experimental -b:a 128k -ar 44100 \
