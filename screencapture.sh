@@ -245,6 +245,19 @@ startServer(){
 				height:100vh;
 				width:100vw;
 			}
+			#unmute{
+				position:fixed;
+				left:50%;
+				bottom:8vh;
+				transform:translateX(-50%);
+				padding:16px 28px;
+				border:0;
+				border-radius:999px;
+				background:rgba(255,255,255,.92);
+				color:#000;
+				font:600 20px/1 system-ui,sans-serif;
+				cursor:pointer;
+			}
 		</style>
 		<script src="metadata.js"></script>
 		<script>
@@ -417,6 +430,16 @@ startServer(){
 					videoElement = document.querySelector("video#v");
 					videoElement.src = URL.createObjectURL(mediaSource);
 
+					var unmute = document.getElementById("unmute");
+					unmute.addEventListener("click", function(e) {
+						e.stopPropagation();
+						videoElement.muted = false;
+						tryToPlay();
+					}, false);
+					videoElement.addEventListener("volumechange", function() {
+						unmute.hidden = !videoElement.muted;
+					}, false);
+
 					videoElement.addEventListener("click", function(e) {
 						if(videoElement.muted || videoElement.paused) {
 							videoElement.muted = false;
@@ -434,7 +457,8 @@ startServer(){
 		</script>
 	</head>
 	<body>
-		<video id="v" muted autoplay></video>
+		<video id="v" muted autoplay playsinline></video>
+		<button id="unmute" type="button">&#128264; Tap for sound</button>
 	</body>
 	</html>
 	EOF
