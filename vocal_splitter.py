@@ -239,6 +239,12 @@ def main(argv):
 	while True:
 		next_file = get_next_file(device)
 		if not next_file:
+			if use_DNN:  # nothing to split: time the words of songs that have lyrics and a vocals track
+				try:
+					from lib import word_align
+					word_align.run_pending(song_path)
+				except Exception as e:
+					print('Word timing unavailable: %r' % e, flush = True)
 			time.sleep(2)
 			continue
 

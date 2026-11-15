@@ -19,7 +19,7 @@ import numpy as np
 
 API = 'https://lrclib.net/api/search'
 USER_AGENT = 'OpenHomeKaraoke (https://github.com/xuancong84/OpenHomeKaraoke)'
-ASS_VERSION = 5  # bump when the subtitle layout changes, so cached subtitle files are rebuilt
+ASS_VERSION = 6  # bump when the subtitle layout changes, so cached subtitle files are rebuilt
 DURATION_TOLERANCE = 8  # seconds; a bigger difference usually means a different recording or a long video intro
 
 BRACKETS = re.compile(r'[\(\[\{【（].*?[\)\]\}】）]')
@@ -156,6 +156,7 @@ def to_ass(lines, font = 'Arial Unicode MS', roman_lang = None, notes = None):
 	if sung:  # show the first line a few seconds before it is sung
 		t0, w0 = sung[0]
 		events.append((max(0, t0 - 4), t0, 'Next', _joiner(w0).join(_esc(w) for _, w in w0)))
+	prev_end = 0
 	for i, line in enumerate(lines):
 		t, words = line[0], line[1]
 		measured = line[2] if len(line) > 2 else None  # sung length from lyrics_align, when known
@@ -165,10 +166,18 @@ def to_ass(lines, font = 'Arial Unicode MS', roman_lang = None, notes = None):
 		end = min(nxt, t + 12)
 		gap = max(0.3, end - t)
 		sep = _joiner(words)
-		if all(wt is not None for wt, _ in words):  # enhanced LRC: real word times
+		ends = line[3] if len(line) > 3 else None  # word ends, when the words were timed from the vocals
+		gaps = [0] * len(words)
+		if all(wt is not None for wt, _ in words):  # real word times: enhanced LRC, or timed from the vocals
+			t = max(prev_end, min(t, words[0][0]))  # the singer may come in a little before the line's listed start
 			times = [wt for wt, _ in words] + [min(words[-1][0] + 0.8, end)]
-			durs = [max(0.05, times[k + 1] - times[k]) for k in range(len(words))]
+			if ends:  # fill each word while it's sung and hold through the pause after it
+				durs = [max(0.05, ends[k] - times[k]) for k in range(len(words))]
+				gaps = [max(0, times[k + 1] - ends[k]) if k + 1 < len(words) else 0 for k in range(len(words))]
+			else:
+				durs = [max(0.05, times[k + 1] - times[k]) for k in range(len(words))]
 			lead = max(0, words[0][0] - t)
+			durs[0] = max(0.05, durs[0] - max(0, t - words[0][0]))  # started late (clamped): keep later words on time
 		else:  # line times only: spread the fill over the sung (or an estimated) time, weighted by word length
 			from lib.lyrics_align import estimate_sing
 			sing = estimate_sing(words, gap)  # never fill faster than the usual pace: a racing fill is worse than a slow one
@@ -178,11 +187,13 @@ def to_ass(lines, font = 'Arial Unicode MS', roman_lang = None, notes = None):
 			durs = [sing * len(w) / total for _, w in words]
 			lead = 0
 		text = ('{\\k%d}' % round(lead * 100) if lead else '') + \
-		       sep.join('{\\kf%d}%s' % (max(1, round(d * 100)), _esc(w)) for d, (_, w) in zip(durs, words))
+		       sep.join('{\\kf%d}%s%s' % (max(1, round(d * 100)), _esc(w), '{\\k%d}' % round(g * 100) if g >= 0.05 else '')
+		                for d, g, (_, w) in zip(durs, gaps, words))
 		events.append((t, end, sing_style, text))
+		prev_end = end
 		if roman_lang:
 			try:
-				events.append((t, end, 'Roman', _roman_text([(d, w) for d, (_, w) in zip(durs, words)], sep, lead, roman_lang)))
+				events.append((t, end, 'Roman', _roman_text([(d + g, w) for d, g, (_, w) in zip(durs, gaps, words)], sep, lead, roman_lang)))
 			except Exception as e:
 				logging.info('Romanization failed for a line: %s' % repr(e)[:200])
 		upcoming = next((L for L in lines[i + 1:] if L[1]), None)  # (start, words, ...)
@@ -198,12 +209,23 @@ def cache_paths(song_path, cache_dir):
 	return base + '.json', base + '.none'
 
 
-def load(song_path, cache_dir):
+def load(song_path, cache_dir, word_times = True):
+	"""[(start, [(word_start or None, word), ...], sung_seconds[, word_ends]), ...] from the cache. With
+	word_times, lines whose words were timed from the vocals (lib/word_align.py) carry each word's start and end."""
 	path = cache_paths(song_path, cache_dir)[0]
 	if not os.path.isfile(path):
 		return None
 	with open(path, encoding = 'utf-8') as fp:
-		return [(L[0], [tuple(w) for w in L[1]], L[2]) for L in json.load(fp)]
+		lines = [(L[0], [tuple(w) for w in L[1]], L[2]) for L in json.load(fp)]
+	if word_times:
+		from lib import word_align
+		timed = word_align.load(song_path, cache_dir)
+		if timed and len(timed) == len(lines):
+			for i, wt in enumerate(timed):
+				t, words, sung = lines[i]
+				if wt and len(wt) == len(words):
+					lines[i] = (t, [(s, w) for (s, _), (_, w) in zip(wt, words)], sung, [e for _, e in wt])
+	return lines
 
 
 def language(song_path, cache_dir):

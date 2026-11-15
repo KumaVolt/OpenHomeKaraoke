@@ -55,7 +55,7 @@ COPY requirements.txt /tmp/requirements.txt
 RUN grep -v -i -E '^\s*(torch|librosa|soundfile|spec_utils|futures|pip|setuptools|wheel)\b' /tmp/requirements.txt > /tmp/requirements-base.txt \
  && pip install -r /tmp/requirements-base.txt \
  && if [ "$WITH_VOCAL_SPLITTER" = "true" ]; then \
-        pip install --index-url https://download.pytorch.org/whl/cpu torch \
+        pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio \
      && pip install librosa==0.10.0 soundfile opencv-python-headless ; \
     fi \
  && rm /tmp/requirements*.txt

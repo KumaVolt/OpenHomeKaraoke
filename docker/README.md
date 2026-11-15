@@ -140,6 +140,14 @@ vocal splitter has made one) and lines the lyrics up with it, which also handles
 If they still run early or late, use the subtitle delay control in the web UI.
 The subtitle switch in the web UI turns them off for a song, and `--no-lyrics` turns the lookup off completely.
 
+LRCLIB lyrics are timed per line, so on their own the colour fill can only sweep across a line at an even pace.
+With the vocal splitter image, each word is also timed against the vocals-only track once the song has been split,
+using a speech model (Meta's MMS forced aligner, through torchaudio), so the fill follows the singer: held notes
+stay lit, quick words go quickly. It runs once per song, at low priority, when the splitter has nothing else to do,
+and the result is cached in `songs/.lyrics/<song>.words.json`. The model (about 1.2 GB) is downloaded into
+`songs/.models/` the first time; timing a song takes about a minute or two on a small CPU. Lines it can't place
+confidently keep the per-line timing.
+
 ### Pitch guide
 
 With the vocal splitter image, songs it has processed can show the melody above the lyrics: each note is a bar
