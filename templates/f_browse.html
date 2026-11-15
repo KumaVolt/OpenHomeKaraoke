@@ -70,6 +70,10 @@
         <a class='edit-button' onclick="onEdit('/f_edit?song={{url_escape(song.encode())}}')"
           title="{{getString1(104)}}"><i class="icon icon-edit-1"></i> </a>
       </td>
+      <td width="20px">
+        <a class='delete-button has-text-danger' onclick="onDelete('{{url_escape(song.encode())}}', this)"
+          title="{{getString1(218)}}"><i class="icon icon-trash-empty"></i> </a>
+      </td>
     {% endif %}
     {% endfor %}
 </table>
@@ -109,7 +113,14 @@ $('a.add-song-link').click(function(e) {
 })
 
 function onEdit(url){
+  showNotification("{{getString1(104)}}…", "is-info");
   $.get(url).done((data)=>{$('#container').html(data)});
+}
+
+function onDelete(song, el){
+  var name = $(el).closest('tr').children('td').eq(2).text();
+  if (window.confirm("{{getString1(219)}}\n\n" + name))
+    get_refresh("/files/delete?song=" + song, '/f_browse');
 }
 
 </script>
