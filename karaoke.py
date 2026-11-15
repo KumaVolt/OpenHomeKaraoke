@@ -1063,10 +1063,13 @@ class Karaoke:
 		self.play_speed = 1
 
 	def streamer_alive(self):
-		try:
-			return bool([1 for p in psutil.process_iter() if './screencapture.sh' in p.cmdline()])
-		except:
-			return None
+		for p in psutil.process_iter():
+			try:
+				if './screencapture.sh' in p.cmdline():
+					return True
+			except psutil.Error:  # zombies left by a streamer restart, or processes that just exited
+				pass
+		return False
 
 	def streamer_restart(self, delay=0):
 		if self.platform in ['windows', 'osx']:
