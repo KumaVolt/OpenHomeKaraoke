@@ -54,6 +54,8 @@ headless)
 
 	log "Starting virtual sound card"
 	export PULSE_RUNTIME_PATH="/tmp/pulse-$(id -u)"
+	# a restarted container keeps /tmp, and a stale pid file stops PulseAudio from starting
+	rm -rf "$PULSE_RUNTIME_PATH" ~/.config/pulse
 	pulseaudio -n --daemonize=yes --exit-idle-time=-1 --log-target=file:/tmp/pulseaudio.log \
 		-L "module-native-protocol-unix" \
 		-L "module-null-sink sink_name=karaoke sink_properties=device.description=Karaoke" \
