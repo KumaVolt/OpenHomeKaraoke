@@ -8,6 +8,10 @@ LRC usually only says when each line starts, so the fill across a line is spread
 estimated singing time. When the lyrics carry per-word times (enhanced LRC, '<mm:ss.xx>' tags),
 those are used instead. The phone's subtitle delay control shifts everything if a video has a
 longer intro than the recording the lyrics were timed to.
+
+Before saving, lib/lyrics_align.py lines the lyrics up with the singing it hears in the file: it fixes an
+overall offset (such as a video intro), moves lines to where singing starts, and measures each sung phrase
+so the fill runs as long as the singing does.
 """
 import os, re, logging, subprocess
 import requests
@@ -109,11 +113,13 @@ def _joiner(words):
 
 def to_ass(lines, font = 'Arial Unicode MS'):
 	events = []
-	sung = [(t, w) for t, w in lines if w]
+	sung = [(L[0], L[1]) for L in lines if L[1]]
 	if sung:  # show the first line a few seconds before it is sung
 		t0, w0 = sung[0]
 		events.append((max(0, t0 - 4), t0, 'Next', _joiner(w0).join(_esc(w) for _, w in w0)))
-	for i, (t, words) in enumerate(lines):
+	for i, line in enumerate(lines):
+		t, words = line[0], line[1]
+		measured = line[2] if len(line) > 2 else None  # sung length from lyrics_align, when known
 		if not words:
 			continue
 		nxt = lines[i + 1][0] if i + 1 < len(lines) else t + 6
@@ -126,14 +132,14 @@ def to_ass(lines, font = 'Arial Unicode MS'):
 			lead = max(0, words[0][0] - t)
 		else:  # line times only: spread the fill over an estimated singing time, weighted by word length
 			per_unit = 0.42 if sep == ' ' else 0.3
-			sing = min(gap * 0.92, max(1.0, per_unit * len(words) + 0.3))
+			sing = min(gap * 0.97, measured) if measured else min(gap * 0.92, max(1.0, per_unit * len(words) + 0.3))
 			total = sum(len(w) for _, w in words)
 			durs = [sing * len(w) / total for _, w in words]
 			lead = 0
 		text = ('{\\k%d}' % round(lead * 100) if lead else '') + \
 		       sep.join('{\\kf%d}%s' % (max(1, round(d * 100)), _esc(w)) for d, (_, w) in zip(durs, words))
 		events.append((t, end, 'Sing', text))
-		upcoming = next((L for L in lines[i + 1:] if L[1]), None)
+		upcoming = next((L for L in lines[i + 1:] if L[1]), None)  # (start, words, ...)
 		if upcoming and upcoming[0] - end < 4:
 			events.append((t, end, 'Next', _joiner(upcoming[1]).join(_esc(w) for _, w in upcoming[1])))
 	body = ''.join('Dialogue: 0,%s,%s,%s,,0,0,0,,%s\n' % (_ts(a), _ts(b), style, text) for a, b, style, text in events)
@@ -145,7 +151,7 @@ def cache_paths(song_path, cache_dir):
 	return base + '.ass', base + '.none'
 
 
-def prepare(song_path, cache_dir, name):
+def prepare(song_path, cache_dir, name, vocal_track = None):
 	"""Fetch and cache lyrics for a song. Returns the .ass path, or None when the song gets no lyrics."""
 	ass, none = cache_paths(song_path, cache_dir)
 	if os.path.isfile(ass):
@@ -168,9 +174,17 @@ def prepare(song_path, cache_dir, name):
 			if hit is None:
 				reason = 'not found on lrclib.net'
 			else:
+				lines = parse_lrc(hit['syncedLyrics'])
+				try:  # line the lyrics up with the singing heard in this file
+					from lib import lyrics_align
+					lines, summary = lyrics_align.align(song_path, lines, hit.get('duration'), duration,
+					                                    vocal_track if vocal_track and os.path.isfile(vocal_track) else None)
+					logging.info('Lyrics alignment: ' + summary)
+				except Exception as e:
+					logging.info('Lyrics alignment skipped: %s' % repr(e)[:200])
 				os.makedirs(cache_dir, exist_ok = True)
 				with open(ass, 'w', encoding = 'utf-8') as fp:
-					fp.write(to_ass(parse_lrc(hit['syncedLyrics'])))
+					fp.write(to_ass(lines))
 				logging.info('Lyrics: using "%s - %s" from lrclib.net for %s' % (hit.get('artistName'), hit.get('trackName'), name))
 				return ass
 	logging.info('Lyrics: none for %s (%s)' % (name, reason))

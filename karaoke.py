@@ -1082,7 +1082,8 @@ class Karaoke:
 			return None
 		def job():
 			try:
-				lyrics.prepare(song_path, self.lyrics_cache_dir(), self.filename_from_path(song_path))
+				lyrics.prepare(song_path, self.lyrics_cache_dir(), self.filename_from_path(song_path),
+				               vocal_track = self.download_path + 'vocal/' + os.path.basename(song_path) + '.m4a')
 			except Exception:
 				logging.warning('Lyrics lookup crashed: ' + traceback.format_exc())
 		th = threading.Thread(target = job, daemon = True)
