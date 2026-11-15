@@ -155,7 +155,8 @@ class Karaoke:
 		if os.environ.get('PUBLIC_URL'):
 			self.url = os.environ['PUBLIC_URL'].rstrip('/')
 		# screencapture.sh serves plain http on port 4000
-		self.stream_url = os.environ.get('STREAM_URL', '').rstrip('/') or "http://%s:4000" % self.ip
+		# keep a trailing slash: the stream page served under a path (e.g. /tv/) loads its video relative to it
+		self.stream_url = os.environ.get('STREAM_URL', '') or "http://%s:4000" % self.ip
 
 		# get songs from download_path
 		self.get_available_songs()

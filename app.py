@@ -4,7 +4,7 @@ import argparse, datetime, json, locale, os, sys, io, shutil
 import subprocess, threading, time, traceback, webbrowser
 from functools import wraps
 
-import psutil, tempfile
+import psutil, tempfile, requests
 from unidecode import unidecode
 from flask import *
 from flask.logging import logging
@@ -135,6 +135,26 @@ def is_admin():
 		if (a == admin_password):
 			return True
 	return False
+
+
+# The TV stream page (screencapture.sh on STREAM_PORT) is also served at /tv/, so one domain behind a reverse
+# proxy covers both the phones and the TV without any extra proxy rules.
+@app.route("/tv")
+def tv_redirect():
+	return redirect("/tv/")
+
+
+@app.route("/tv/", defaults = {"path": ""})
+@app.route("/tv/<path:path>")
+def tv_stream(path):
+	try:
+		r = requests.get("http://127.0.0.1:%s/%s" % (os.environ.get("STREAM_PORT", "4000"), path), timeout = 10)
+	except requests.RequestException:
+		return "The TV stream is not running.", 503
+	headers = {"Cache-Control": "no-cache"}
+	if "Next-Segment" in r.headers:  # tells the page which segment to ask for after a 404
+		headers["Next-Segment"] = r.headers["Next-Segment"]
+	return Response(r.content, status = r.status_code, content_type = r.headers.get("Content-Type"), headers = headers)
 
 
 @app.route("/")
