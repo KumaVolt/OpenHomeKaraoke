@@ -17,6 +17,17 @@
     top: 3px;
     z-index: 20;
   }
+  a.add-song-link, a.edit-button, a.delete-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 10px;
+    font-size: 1.35rem;
+  }
+  a.add-song-link:active, a.edit-button:active, a.delete-button:active { background: rgba(255,255,255,.12); }
+  td:has(> a.add-song-link), td:has(> a.edit-button), td:has(> a.delete-button) { width: 44px; padding: 2px 0 !important; }
   @media screen and (max-width: 500px) {
     #alpha-bar {
       font-size: 13px;
