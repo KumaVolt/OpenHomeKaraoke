@@ -81,6 +81,11 @@ host)
 esac
 
 if [ "$ENABLE_STREAM" = "1" ]; then
+	GPU="${VAAPI_DEVICE:-/dev/dri/renderD128}"
+	if [ -e "$GPU" ] && ! [ -r "$GPU" -a -w "$GPU" ]; then
+		log "The GPU ($GPU) is passed in but this container can't use it, so the stream is encoded on the CPU."
+		log "       Add  group_add: [\"$(stat -c %g "$GPU")\"]  to the service (see docker/README.md)."
+	fi
 	start_streamer
 fi
 

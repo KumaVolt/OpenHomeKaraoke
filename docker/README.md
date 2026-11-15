@@ -60,6 +60,25 @@ In Portainer, go to **Stacks → Add stack → Web editor**, paste [`portainer-s
 change `HOST_IP` (and the image tag if you want the vocal splitter), then deploy.
 To update later, open the stack and choose **Update the stack** with **Re-pull image** turned on.
 
+### Small machines (LattePanda, NUC, Intel mini PCs)
+
+Two things keep playback smooth on a 2- or 4-core CPU:
+
+- **The vocal splitter runs at the lowest CPU priority**, so it only uses time that playback and the TV stream leave
+  over. Songs still get split, just more slowly while someone is singing.
+- **The TV stream can be encoded on the Intel GPU** (Quick Sync) instead of the CPU. Give the container the GPU and
+  the device's group, as in the commented lines of [`portainer-stack.yml`](portainer-stack.yml):
+
+  ```yaml
+      devices:
+        - /dev/dri:/dev/dri
+      group_add:
+        - "993"   # the output of: stat -c %g /dev/dri/renderD128
+  ```
+
+  The streamer uses the GPU automatically when it works and falls back to the CPU otherwise. Check which one it picked
+  with `docker exec openhomekaraoke grep Encoding /tmp/screencapture.log`. Set `STREAM_ENCODER: x264` to force the CPU.
+
 ## Host display mode (Linux)
 
 Use this mode to show the karaoke screen full-screen on the monitor or TV connected to the machine, like running `app.py` directly.
@@ -87,6 +106,7 @@ Check with `id -u`, and if it's different, edit the `user:` line and the `/run/u
 | `OHK_MODE` | `headless` | `headless` or `host`. |
 | `ENABLE_STREAM` | `1` headless, `0` host | Whether to stream the screen on port 4000. |
 | `STREAM_PORT` | `4000` | Port of the TV stream inside the container. |
+| `STREAM_ENCODER` | `auto` | `auto` uses the GPU's video encoder (VAAPI) when `/dev/dri` is passed in and works, else the CPU. `x264` or `vaapi` forces one. |
 
 ### app.py options
 

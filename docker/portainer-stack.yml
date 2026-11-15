@@ -4,7 +4,8 @@
 #   1. Change HOST_IP to the server's LAN IP.
 #   2. Pick the image: add "-vocal" to the tag for the DNN vocal splitter (vocal removal and
 #      vocals-only tracks; about 1-2 GB bigger and splitting is slow on a small CPU).
-#   3. Deploy, then open http://<HOST_IP>:5000 on a phone and http://<HOST_IP>:4000 on the TV.
+#   3. On a small Intel machine, turn on GPU encoding for the TV stream (see devices: below).
+#   4. Deploy, then open http://<HOST_IP>:5000 on a phone and http://<HOST_IP>:4000 on the TV.
 
 services:
   openhomekaraoke:
@@ -30,6 +31,12 @@ services:
       # "/srv/karaoke/songs:/songs" and make that folder writable by uid 1000 (chown -R 1000:1000 ...).
       - songs:/songs
     shm_size: "256m"
+    # Intel graphics (LattePanda, NUC, most Intel mini PCs): encode the TV stream on the GPU instead of the CPU.
+    # Uncomment both, and set group_add to the group of the GPU device: run  stat -c %g /dev/dri/renderD128  on the server.
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "993"
 
 volumes:
   songs:

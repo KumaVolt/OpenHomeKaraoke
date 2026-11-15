@@ -53,6 +53,17 @@ def cleanse_modules(name):
 		pass
 
 
+def run_vocal_splitter(argv):
+	"""The DNN vocal splitter, at the lowest CPU priority: on a small CPU it would otherwise take time from
+	VLC and the TV stream and make the karaoke stutter. It only gets the CPU time playback leaves over."""
+	try:
+		os.nice(19)
+	except (AttributeError, OSError):  # Windows has no nice
+		pass
+	import vocal_splitter
+	vocal_splitter.main(argv)
+
+
 class Karaoke:
 	ref_W, ref_H = 1920, 1080      # reference screen size, control drawing scale
 
@@ -1168,7 +1179,7 @@ class Karaoke:
 			if self.vocal_process is not None and self.vocal_process.is_alive():
 				self.vocal_process.kill()
 			if shutil.which('ffmpeg'):
-				self.vocal_process = mp.Process(target=vocal_splitter.main, args=(['-p', '-d', self.download_path],))
+				self.vocal_process = mp.Process(target=run_vocal_splitter, args=(['-p', '-d', self.download_path],))
 				self.vocal_process.start()
 		else:
 			os.system(f"tmux send-keys -t PiKaraoke:0.4 C-c && tmux send-keys -t PiKaraoke:0.4 Up Enter")

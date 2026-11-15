@@ -37,6 +37,16 @@ RUN apt-get update \
  && locale-gen \
  && rm -rf /var/lib/apt/lists/*
 
+# Intel GPU video encoding (Quick Sync through VAAPI) for the TV stream, on x86 only. It's used when the
+# container is given /dev/dri, and frees the CPU on small machines such as a LattePanda or a NUC.
+# The driver that can encode on Intel graphics is in Debian's non-free section.
+RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
+        sed -i 's/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources \
+     && apt-get update \
+     && apt-get install -y --no-install-recommends intel-media-va-driver-non-free i965-va-driver-shaders vainfo \
+     && rm -rf /var/lib/apt/lists/* ; \
+    fi
+
 WORKDIR /app
 
 # Python dependencies. torch/librosa (only needed by the DNN vocal splitter) are

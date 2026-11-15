@@ -147,20 +147,48 @@ calc() {
 	python3 -c "print($1, end='')"
 }
 
+# Video encoder: STREAM_ENCODER=auto (default) uses the Intel/AMD GPU's hardware encoder through VAAPI when
+# /dev/dri is available and a test encode works, which frees the CPU on small machines; otherwise libx264.
+# STREAM_ENCODER=x264 or vaapi forces one.
+VAAPI_DEVICE="${VAAPI_DEVICE:-/dev/dri/renderD128}"
+pickEncoder(){
+	local want="${STREAM_ENCODER:-auto}"
+	if [ "$want" = "x264" ]; then
+		echo x264; return
+	fi
+	if [ -e "$VAAPI_DEVICE" ] && ffmpeg -v error -vaapi_device "$VAAPI_DEVICE" -f lavfi -i "testsrc=size=640x360:rate=30" -t 0.3 \
+			-vf "format=nv12,hwupload" -c:v h264_vaapi -profile:v constrained_baseline -f null - 2>/tmp/vaapi-test.log; then
+		echo vaapi; return
+	fi
+	if [ "$want" = "vaapi" ]; then
+		echo "STREAM_ENCODER=vaapi, but the hardware encoder at $VAAPI_DEVICE does not work (see /tmp/vaapi-test.log); using libx264" >&2
+	fi
+	echo x264
+}
+
 startCapture(){
 	echo -n "\"use strict\";var mimeCodec=[\"video/mp4; codecs=\\\"avc1.42c01f\\\"\",\"audio/mp4; codecs=\\\"mp4a.40.2\\\"\"];" > metadata.js
+
+	local SCALE="scale=trunc(iw*$VIDEOSCALE/2)*2:trunc(ih*$VIDEOSCALE/2)*2"
+	local HW=() VIDEO=()
+	if [ "$(pickEncoder)" = "vaapi" ]; then
+		echo "Encoding the stream on the GPU (VAAPI, $VAAPI_DEVICE)" >&2
+		HW=(-vaapi_device "$VAAPI_DEVICE")
+		VIDEO=(-filter:v "$SCALE,format=nv12,hwupload" -c:v h264_vaapi -profile:v constrained_baseline)
+	else
+		echo "Encoding the stream on the CPU (libx264)" >&2
+		VIDEO=(-pix_fmt yuv420p -filter:v "$SCALE" -c:v libx264 -profile:v baseline -tune fastdecode -preset ultrafast)
+	fi
 
 	mkdir 0 1
 
 	ffmpeg \
-		-loglevel "$LOGLEVEL" \
+		-loglevel "$LOGLEVEL" "${HW[@]}" \
 		-f x11grab -framerate "$FRAMERATE" -s:size "$CAPTURESIZE" -thread_queue_size 64 -i "$DISPLAYNAME+$CAPTUREORIGIN" \
 		-f "$SOUNDSERVER" -thread_queue_size 1024 -itsoffset "$AUDIODELAY" -i "$AUDIODEVICE" \
-		-pix_fmt yuv420p \
 		-filter:a "aresample=first_pts=0" \
 		-c:a aac -strict experimental -b:a 128k -ar 44100 \
-		-filter:v "scale=trunc(iw*$VIDEOSCALE/2)*2:trunc(ih*$VIDEOSCALE/2)*2" \
-		-c:v libx264 -profile:v baseline -tune fastdecode -preset ultrafast -b:v "$TARGETBITRATE" -maxrate "$MAXBITRATE" -bufsize "$BUFFERSIZE" \
+		"${VIDEO[@]}" -b:v "$TARGETBITRATE" -maxrate "$MAXBITRATE" -bufsize "$BUFFERSIZE" \
 		-r "$FRAMERATE" -g $(calc "round($FRAMERATE*$SEGMENTDURATION)") -keyint_min $(calc "round($FRAMERATE*$SEGMENTDURATION)") \
 		-movflags +empty_moov+frag_keyframe+default_base_moof+cgop -f dash -seg_duration $SEGMENTDURATION \
 		-use_template 0 -window_size "$MAXSEGMENTS" -extra_window_size 0 -remove_at_exit 1 \
