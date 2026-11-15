@@ -33,10 +33,8 @@ $(document).keypress(
     if (event.which == '13') {
       event.preventDefault();
 
-      if ($(".search-selectize .selectize-input input").val())
-        $('#search-link').trigger("click");
-      else if ($('.search-selectize').find(":selected").text())
-        $('#add-queue-link').trigger("click");
+      if (event.target.id == 'search-box')
+        $('#search-link').is(':visible') ? $('#search-link').trigger("click") : $('#add-queue-link').trigger("click");
     }
   });
 
@@ -45,6 +43,7 @@ $('#search-link').click((e) => {
   $("#search-link").addClass("is-loading");
   var search_term = $("#search-box").val();
   var include_non_karaoke = $("#search-karaoke").is(":checked");
+  old_text = search_term;
   if (search_term)
     post_switch("/f_search", {search_string:search_term, non_karaoke:include_non_karaoke});
 });
@@ -102,14 +101,73 @@ function countChars(s){
     sum += s.charCodeAt(x)>127?2:1;
   return sum;
 }
-var old_text, suggests;
+var old_text, suggests, sugTimer, sugSeq = 0;
 function set_suggests(obj){
   suggests = obj;
-  var html = '';
-  for(var i of Object.keys(obj))
-    html += `<option value="${i}">`;
-  $('#suggestions').html(html);
+  update_search_button();
 }
+// show "Queue" when the box holds a song that is already in the library, otherwise "Search"
+function update_search_button(){
+  if(suggests && $('#search-box').val() in suggests){
+    $('#add-queue-link').show();
+    $('#search-link').hide();
+  }else{
+    $('#add-queue-link').hide();
+    $('#search-link').show();
+  }
+}
+function sug_row(cls, icon, text){
+  return $('<div class="sug-row" tabindex="0">').addClass(cls)
+    .append($('<i class="icon">').addClass(icon))
+    .append($('<span class="sug-name">').text(text));
+}
+function render_suggest(local, yt){
+  var box = $('#ktv-suggest').empty();
+  var names = Object.keys(local || {});
+  if(names.length){
+    box.append($('<h3>').text("{{getString1(238)}}"));
+    for(var name of names)
+      box.append(sug_row('sug-local', 'icon-music', name).attr('data-name', name)
+        .append($('<button class="sug-queue" type="button">').text("{{getString1(119)}}")));
+  }
+  if(yt && yt.length){
+    box.append($('<h3>').text("{{getString1(239)}}"));
+    for(var s of yt)
+      box.append(sug_row('sug-yt', 'icon-search', s).attr('data-q', s));
+  }
+  $('.ktv-search-help').toggle(box.is(':empty'));
+}
+function fetch_suggest(q){
+  var seq = ++sugSeq, local = null, yt = null;
+  var draw = () => { if(seq == sugSeq) render_suggest(local, yt); };
+  $.get('/suggest', {q: q, limit: 6}).then((data) => { local = JSON.parse(data); set_suggests(local); draw(); });
+  $.get('/suggest_yt', {q: q}).then((data) => { yt = JSON.parse(data); draw(); });
+}
+$('#ktv-suggest').on('click', '.sug-queue', function(e){
+  e.stopPropagation();
+  var btn = $(this), name = btn.closest('.sug-row').attr('data-name');
+  btn.prop('disabled', true);
+  $.post("/enqueue", {song: suggests[name], user: currentUser}).then((data) => {
+    var obj = JSON.parse(data);
+    if (obj.success)
+      showNotification("{{getString1(115)}}" + obj.song, "is-success");
+    else{
+      showNotification("{{getString1(116)}}" + obj.song, "is-danger");
+      btn.prop('disabled', false);
+    }
+  });
+});
+$('#ktv-suggest').on('click', '.sug-local', function(){
+  $('#search-box').val($(this).attr('data-name'));
+  update_search_button();
+});
+$('#ktv-suggest').on('click', '.sug-yt', function(){
+  $('#search-box').val($(this).attr('data-q'));
+  $('#search-link').trigger('click');
+});
+$('#ktv-suggest').on('keydown', '.sug-row', function(e){
+  if(e.key == 'Enter'){ e.preventDefault(); e.stopPropagation(); $(this).trigger('click'); }
+});
 function searchASR(){
   var blob = new Blob(audios, { type: "audio/webm" });
 	const req = new XMLHttpRequest();
@@ -122,21 +180,20 @@ function searchASR(){
 	req.send(blob);
 }
 $('#search-box').on('input', (ev) => {
-  if(ev.target.value!=old_text && countChars(ev.target.value)>=4){
-    old_text = ev.target.value;
-    $.get('/suggest?q='+ev.target.value).then((data) => { set_suggests(JSON.parse(data)); });
-    if(suggests!=null && old_text in suggests){
-      $('#add-queue-link').show();
-      $('#search-link').hide();
-    }else{
-      $('#add-queue-link').hide();
-      $('#search-link').show();
-    }
+  var q = ev.target.value.trim();
+  old_text = ev.target.value;
+  update_search_button();
+  clearTimeout(sugTimer);
+  if(countChars(q) < 2){
+    sugSeq++;
+    render_suggest(null, null);
+    return;
   }
+  sugTimer = setTimeout(() => fetch_suggest(q), 180);
 });
 if(old_text){
   $('#search-box').val(old_text);
-  if(suggests) set_suggests(suggests);
+  update_search_button();
 }
 </script>
 
@@ -150,8 +207,7 @@ if(old_text){
   <div class="field" id="container_queue_form">
     <div id="search-field" class="field has-addons" style="margin-bottom: 5px">
       <div class="control" style="width:100%">
-        <input class="input" list="suggestions" id="search-box" type="text" value="{{search_string}}" autocomplete="off">
-        <datalist id="suggestions"></datalist>
+        <input class="input" id="search-box" type="search" enterkeyhint="search" value="{{search_string}}" autocomplete="off">
       </div>
       <div class="control">
         <a class="button is-warning" id="search-link">{{getString1(118)}}</a>
@@ -170,7 +226,9 @@ if(old_text){
       </label>
     </div>
     
-    <div>
+    <div id="ktv-suggest" class="ktv-suggest"></div>
+
+    <div class="ktv-search-help">
       <p class="help" style="margin-top: 15px">{{getString1(122)}}</p>
       <p class="help">{{getString1(123)}}</p>
     </div>

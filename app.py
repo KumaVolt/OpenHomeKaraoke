@@ -505,6 +505,7 @@ def f_search():
 		songs = K.available_songs,
 		high_quality = K.high_quality,
 		search_results = search_results,
+		search_string = search_string,
 		search_karaoke = search_karaoke
 	)
 
@@ -525,9 +526,39 @@ def autocomplete():
 
 @app.route("/suggest")
 def suggest():
-	q = request.args.get('q').lower()
-	res = {K.filename_from_path(s):s for s in K.available_songs if q in s.lower()}
+	q = request.args.get('q', '').lower()
+	limit = int(request.args.get('limit', 0) or 0)
+	words = q.split()
+	res = {}
+	for s in K.available_songs:
+		name = K.filename_from_path(s)
+		# match every typed word anywhere in the song name, so "queen bohemian" finds "Bohemian Rhapsody - Queen"
+		if all(w in name.lower() for w in words):
+			res[name] = s
+			if limit and len(res) >= limit:
+				break
 	return json.dumps(res)
+
+
+yt_suggest_cache = {}
+@app.route("/suggest_yt")
+def suggest_yt():
+	# YouTube's search-box suggestions (no API key needed); best effort, empty list on any failure
+	q = request.args.get('q', '').strip()
+	if not q:
+		return json.dumps([])
+	if q not in yt_suggest_cache:
+		try:
+			import requests
+			r = requests.get('https://suggestqueries.google.com/complete/search',
+				params = {'client': 'firefox', 'ds': 'yt', 'q': q, 'hl': request.client_lang.split('_')[0]}, timeout = 2)
+			yt_suggest_cache[q] = [s for s in r.json()[1] if isinstance(s, str)][:8]
+		except Exception as e:
+			logging.info('YouTube suggestions failed: %s' % repr(e)[:200])
+			return json.dumps([])
+		if len(yt_suggest_cache) > 500:
+			yt_suggest_cache.pop(next(iter(yt_suggest_cache)))
+	return json.dumps(yt_suggest_cache[q])
 
 
 @app.route("/browse", methods = ["GET"])
