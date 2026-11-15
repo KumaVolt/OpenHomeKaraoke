@@ -347,3 +347,7 @@ body > .container { padding-left: 14px !important; padding-right: 14px !importan
 .ktv-suggest .sug-queue:disabled { background: var(--velvet); color: var(--muted); cursor: default; }
 .ktv-suggest .sug-queue:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 #search-box::-webkit-search-cancel-button { filter: invert(1) opacity(.6); }
+
+/* romaji / pinyin switch in the tune controls */
+#romanize-btn { min-width: 3.5rem; text-align: center; }
+#romanize-btn.is-on { background: var(--pink); border-color: var(--pink); color: #fff; }

@@ -69,6 +69,7 @@ class Karaoke:
 	audio_delay = 0
 	has_video = True
 	has_subtitle = False
+	lyrics_romanize = True    # show romaji/pinyin under Japanese/Chinese/Korean synced lyrics
 	subtitle_delay = 0
 	play_speed = 1.0
 	show_subtitle = True
@@ -623,9 +624,9 @@ class Karaoke:
 				extra_params1 += [f'--audio-desync={self.audio_delay * 1000}']
 			if self.subtitle_delay:
 				extra_params1 += [f'--sub-delay={self.subtitle_delay * 10}']
+			lyrics_file = self.lyrics_file(file_path)
 			if self.show_subtitle:
 				extra_params1 += [f'--sub-track=0']
-				lyrics_file = self.lyrics_file(file_path)
 				if lyrics_file:
 					extra_params1 += [f'--sub-file={lyrics_file}']
 			if self.play_speed != 1:
@@ -642,7 +643,8 @@ class Karaoke:
 			if not xml:	# VLC could not play this file, the run loop moves on to the next song
 				self.switchingSong = False
 				return
-			self.has_subtitle = "<info name='Type'>Subtitle</info>" in xml
+			# VLC can list an added subtitle file a moment after the video; our own lyrics count even while switched off
+			self.has_subtitle = "<info name='Type'>Subtitle</info>" in xml or bool(lyrics_file)
 			self.has_video = "<info name='Type'>Video</info>" in xml
 			self.volume = round(float(self.vlcclient.get_val_xml(xml, 'volume')))
 			if self.normalize_vol:
@@ -1070,11 +1072,29 @@ class Karaoke:
 		return os.path.join(self.download_path, '.lyrics')
 
 	def lyrics_file(self, song_path):
-		"""Cached synced-lyrics subtitle for a song, if one was found (see lib/lyrics.py)."""
+		"""Subtitle file with the cached synced lyrics for a song, if any (see lib/lyrics.py).
+		Japanese, Chinese and Korean lyrics get a romanized line under them unless it is switched off."""
 		if getattr(self, 'no_lyrics', False):
 			return None
-		ass = lyrics.cache_paths(song_path, self.lyrics_cache_dir())[0]
-		return ass if os.path.isfile(ass) else None
+		try:
+			return lyrics.subtitle_file(song_path, self.lyrics_cache_dir(), self.lyrics_romanize)
+		except Exception:
+			logging.warning('Could not build the lyrics subtitle: ' + traceback.format_exc())
+			return None
+
+	def lyrics_language(self):
+		"""'ja', 'zh' or 'ko' when the playing song's lyrics can be romanized."""
+		if not self.now_playing_filename or getattr(self, 'no_lyrics', False):
+			return None
+		try:
+			return lyrics.language(self.now_playing_filename, self.lyrics_cache_dir())
+		except Exception:
+			return None
+
+	def toggle_romanize(self):
+		self.lyrics_romanize = not self.lyrics_romanize
+		if self.is_file_playing() and self.show_subtitle and self.lyrics_language():
+			self.play_vocal(force = True)  # restarts VLC at the same position with the other subtitle file
 
 	def fetch_lyrics(self, song_path):
 		"""Look up lyrics in the background while the "Get ready" card counts down."""

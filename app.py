@@ -215,6 +215,10 @@ def nowplaying(return_json=True):
 		if K.has_subtitle:
 			rc['subtitle_delay'] = s['subtitledelay']
 			rc['show_subtitle'] = K.show_subtitle
+			lang = K.lyrics_language()
+			if lang:
+				rc['romanize'] = K.lyrics_romanize
+				rc['romanize_lang'] = lang
 		return json.dumps(rc) if return_json else rc
 	except Exception as e:
 		logging.error(f"Problem loading /nowplaying, pikaraoke may still be starting up: {e}\n{traceback.print_exc()}")
@@ -444,6 +448,12 @@ def subtitle_delay(delay_val):
 @app.route("/toggle_subtitle")
 def toggle_subtitle():
 	K.toggle_subtitle()
+	return ''
+
+
+@app.route("/toggle_romanize")
+def toggle_romanize():
+	K.toggle_romanize()
 	return ''
 
 

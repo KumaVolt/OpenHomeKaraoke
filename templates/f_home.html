@@ -58,6 +58,12 @@ function update(data){
 
 	if("subtitle_delay" in obj){
 		$("#subdelay-box").show();
+		if("romanize" in obj){
+			$("#romanize-row").show();
+			$("#romanize-label").text({ja: "{{getString1(253)}}", zh: "{{getString1(254)}}", ko: "{{getString1(255)}}"}[obj.romanize_lang]);
+			$("#romanize-btn").text(obj.romanize ? "{{getString1(256)}}" : "{{getString1(257)}}").toggleClass("is-on", obj.romanize);
+		}else
+			$("#romanize-row").hide();
 		if(obj.subtitle_delay!==null && !subdelay_typing)
 			$("#subdelay-val").text(obj.subtitle_delay.toFixed(1));
 		$('#subtitle-sel').css('text-decoration', obj.show_subtitle?"":"line-through");
@@ -241,6 +247,7 @@ $("#subdelay-val").blur(() => {
 });
 
 $("#subtitle-sel").click(() => {$.get("/toggle_subtitle");});
+$("#romanize-btn").click(() => {$.get("/toggle_romanize");});
 $("#delay-inc").click(() => {$.get("/audio_delay/+", function(data){$("#delay-val").text(parseFloat(data).toFixed(2))});});
 $("#delay-dec").click(() => {$.get("/audio_delay/-", function(data){$("#delay-val").text(parseFloat(data).toFixed(2))});});
 $("#subdelay-inc").click(() => {$.get("/subtitle_delay/+", function(data){$("#subdelay-val").text(parseFloat(data).toFixed(1))});});
@@ -350,6 +357,12 @@ hr, h1, h3, h4, p {
 				<h4 title="{{getString1(86)}}" id="subdelay-val" class="tabs hand" contenteditable="true" onfocus="subdelay_typing=true">0</h4>
 				<h4 title="{{getString1(87)}}" id="subdelay-inc" class="tabs hand">+</h4>
 			</span>
+		</div>
+		<div id="romanize-row" style="display: none">
+			<div class="is-flex" style="justify-content: space-between; align-items: center; margin-bottom: .6rem">
+				<h4 id="romanize-label" title="{{getString1(258)}}">{{getString1(253)}}</h4>
+				<h4 id="romanize-btn" class="tabs hand" title="{{getString1(258)}}">{{getString1(256)}}</h4>
+			</div>
 		</div>
 	</div>
 
