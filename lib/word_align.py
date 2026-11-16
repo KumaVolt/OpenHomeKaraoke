@@ -14,7 +14,7 @@ so they survive container updates.
 """
 import hashlib, json, logging, os, re, subprocess, time
 
-VERSION = 2          # 2: the singing model for the languages it knows
+VERSION = 3          # 2: the singing model for the languages it knows; 3: Japanese read per word in context
 SR = 16000
 CHUNK = 30           # seconds of audio per model pass
 LEAD = 0.6           # a line's first word may start this much before its (singing-snapped) start
@@ -160,6 +160,52 @@ def _spell(word, lang):
 	return re.sub(r"[^a-z']", '', unidecode(word).lower())
 
 
+def _ja_units(words):
+	"""Group a Japanese line's lyric words (often single characters) into pieces read in context.
+
+	Read one character at a time, 真 comes out as 'shin' and っ as nothing, while 真っ白 is sung 'masshiro'.
+	So the whole line is read at once (pykakasi splits it into words with their reading) and each reading
+	goes to the lyric words it covers. Returns [(word indices, letters)] in line order."""
+	from lib import romanize
+	from unidecode import unidecode
+	text = ''.join(words)
+	owner = [i for i, w in enumerate(words) for _ in w]      # character -> lyric word
+	try:
+		toks = romanize.tokens(text, 'ja')
+	except Exception:
+		toks = [(w, w) for w in words]
+	units, pos = [], 0                                        # [[first word, last word, letters]]
+	for orig, reading in toks:
+		if not orig:
+			continue
+		a, b = owner[pos], owner[min(pos + len(orig), len(owner)) - 1]
+		pos += len(orig)
+		letters = re.sub(r"[^a-z']", '', unidecode(reading).lower())
+		# the particles は and へ are sung 'wa' and 'e', not 'ha' and 'he' as the dictionary spells the kana
+		for kana, spelled, sung in (('は', 'ha', 'wa'), ('へ', 'he', 'e')):
+			if orig.endswith(kana) and letters.endswith(spelled) and (len(orig) == 1 or romanize.HAN.match(orig[-2])):
+				letters = letters[:-len(spelled)] + sung
+		if units and a <= units[-1][1]:                       # shares a lyric word with the previous reading
+			units[-1][1] = max(units[-1][1], b)
+			units[-1][2] += letters
+		else:
+			units.append([a, b, letters])
+	return [(list(range(a, b + 1)), letters) for a, b, letters in units]
+
+
+def _spread(units, times, words):
+	"""Per-word (start, end) from per-unit times: a unit's time is shared by its words in proportion to length."""
+	out = [None] * len(words)
+	for (idx, _), t in zip(units, times):
+		s, e = t
+		span, total = e - s, sum(max(1, len(words[i])) for i in idx)
+		for i in idx:
+			d = span * max(1, len(words[i])) / total
+			out[i] = [round(s, 2), round(s + d, 2)]
+			s += d
+	return out
+
+
 def _tokens_mms(spelled, D):
 	"""Token ids and the word each belongs to (-1: none) for MMS: letters, with a 'star' around the line."""
 	toks, owner = [D['*']], [-1]
@@ -258,12 +304,16 @@ def align(song_path, cache_dir, vocal_track, model_dir):
 			toks, owner = _tokens_singing(phones)
 			letters = sum(len(re.sub(r'\W', '', w)) for w in ws)
 		else:
-			spelled = [_spell(w, roman) for w in ws]
+			units = _ja_units(ws) if roman == 'ja' else [([wi], _spell(w, roman)) for wi, w in enumerate(ws)]
+			spelled = [u[1] for u in units]
 			toks, owner = _tokens_mms(spelled, D)
 			letters = sum(len(x) for x in spelled)
 		end = lines[i + 1][0] if i + 1 < len(lines) else t + 8
 		a, b = int(max(0, t - LEAD) * fps), int(min(end, t + MAX_LINE) * fps)
-		r = _align_line(em, fps, a, min(b, em.shape[0]), toks, owner, len(ws), blank, letters)
+		n = len(ws) if singing else len(units)
+		r = _align_line(em, fps, a, min(b, em.shape[0]), toks, owner, n, blank, letters)
+		if r is not None and not singing:
+			r = _spread(units, r, ws)
 		result.append(r)
 		timed += r is not None
 	with open(words_path(song_path, cache_dir), 'w', encoding = 'utf-8') as fp:
