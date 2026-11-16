@@ -144,13 +144,55 @@ def tv_redirect():
 	return redirect("/tv/")
 
 
+# The stream only runs while someone watches: encoding the screen costs a fair share of a small CPU even when
+# nobody looks. An open TV page asks for a new piece of video several times a second; after TV_IDLE_MINUTES
+# (default 2, 0 = always on) without any request the stream stops, and the next visit to /tv starts it again.
+TV_IDLE = float(os.environ.get("TV_IDLE_MINUTES", "2")) * 60
+tv_seen = time.time()   # last request for the TV page or its video
+tv_started = 0          # when we last asked the stream to start
+
+TV_STARTING = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Karaoke TV</title></head><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
+background:#000;color:#aaa;font:20px sans-serif">Starting the TV picture&hellip;
+<script>(function poll(){fetch("0/0",{cache:"no-store"}).then(function(r){if(r.ok)location.reload();else setTimeout(poll,1000)})
+.catch(function(){setTimeout(poll,1000)})})()</script></body></html>"""
+
+
+def tv_start():
+	global tv_started
+	if time.time() - tv_started < 20:  # already starting
+		return
+	tv_started = time.time()
+	logging.info("TV stream: someone opened /tv, starting the stream")
+	threading.Thread(target = K.streamer_restart, daemon = True).start()
+
+
+def tv_idle_thread():
+	while True:
+		time.sleep(15)
+		try:
+			now = time.time()
+			if TV_IDLE > 0 and now - tv_seen > TV_IDLE and now - tv_started > TV_IDLE and K.streamer_alive():
+				logging.info("TV stream: nobody has watched for %d minutes, stopping it until someone opens /tv" % (TV_IDLE // 60))
+				K.streamer_stop()
+		except Exception as e:
+			logging.warning("TV stream idle check failed: %r" % e)
+
+
 @app.route("/tv/", defaults = {"path": ""})
 @app.route("/tv/<path:path>")
 def tv_stream(path):
+	global tv_seen
+	tv_seen = time.time()
+	base = "http://127.0.0.1:%s/" % os.environ.get("STREAM_PORT", "4000")
 	try:
-		r = requests.get("http://127.0.0.1:%s/%s" % (os.environ.get("STREAM_PORT", "4000"), path), timeout = 10)
+		# the player page only works once the first video piece exists; until then show a page that waits for it
+		if path == "" and requests.get(base + "0/0", timeout = 5).status_code != 200:
+			return TV_STARTING
+		r = requests.get(base + path, timeout = 10)
 	except requests.RequestException:
-		return "The TV stream is not running.", 503
+		tv_start()
+		return (TV_STARTING, 200) if path == "" else ("The TV stream is starting.", 503)
 	headers = {"Cache-Control": "no-cache"}
 	if "Next-Segment" in r.headers:  # tells the page which segment to ask for after a 404
 		headers["Next-Segment"] = r.headers["Next-Segment"]
@@ -1331,6 +1373,7 @@ if __name__ == "__main__":
 	threading.Thread(target=lambda:app.run(host='0.0.0.0', port=args.port, threaded = True, ssl_context=('cert.pem', 'key.pem') if args.ssl else None)).start()
 
 	threading.Thread(target=status_thread).start()
+	threading.Thread(target=tv_idle_thread, daemon=True).start()
 
 	K.run()
 	os._exit(0)	# force-stop all flask threads and exit
