@@ -124,36 +124,64 @@ def split_vocal_by_stereo(in_wav, out_wav_nonvocal, out_wav_vocal):
 		return False
 
 
+CHUNK_SEC = 60      # split long songs a minute at a time: a 14-minute video in one go needs several GB
+OVERLAP_SEC = 4     # neighbouring pieces overlap and cross-fade, so the seams can't be heard
+
+
 def split_vocal_by_dnn(in_wav, out_wav_nonvocal, out_wav_vocal, args):
-	print('Loading wave source ...', end = ' ', flush = True)
-	X, sr = librosa.load(in_wav, sr=args.sr, mono=False, dtype = np.float32, res_type = 'kaiser_fast')
-	print('done', flush = True)
-
-	if X.ndim == 1:
-		# mono to stereo
-		X = np.asarray([X, X])
-
-	print('STFT of wave source ...', end = ' ', flush = True)
-	X_spec = spec_utils.wave_to_spectrogram(X, args.hop_length, args.n_fft)
-	print('done', flush = True)
-
+	"""Split the song into instruments and vocals, a minute at a time so memory stays small whatever its length."""
 	sp = Separator(args.model, args.device, args.batchsize, args.cropsize)
+	with sf.SoundFile(in_wav) as src:
+		sr, n = src.samplerate, src.frames
+		if sr != args.sr:  # ffm_video2wav already writes 44.1 kHz; anything else goes through the old path
+			src.close()
+			return _split_whole(in_wav, out_wav_nonvocal, out_wav_vocal, args, sp)
+		step, ov = CHUNK_SEC * sr, OVERLAP_SEC * sr
+		fade = np.linspace(0, 1, ov, dtype = np.float32)
+		outs = [sf.SoundFile(out_wav_nonvocal, 'w', sr, 2)] + ([sf.SoundFile(out_wav_vocal, 'w', sr, 2)] if out_wav_vocal else [])
+		try:
+			tails, pos = None, 0
+			while pos < n:
+				end = min(n, pos + step + ov)
+				src.seek(pos)
+				X = src.read(end - pos, dtype = 'float32', always_2d = True).T
+				if X.shape[0] == 1:
+					X = np.concatenate([X, X])
+				X = X[:2]
+				print(f'Splitting {pos / sr:.0f}-{end / sr:.0f} s of {n / sr:.0f} s ...', flush = True)
+				X_spec = spec_utils.wave_to_spectrogram(X, args.hop_length, args.n_fft)
+				y_spec, v_spec = sp.separate_tta(X_spec) if args.tta else sp.separate(X_spec)
+				waves = []
+				for spec in [y_spec, v_spec][:len(outs)]:
+					w = spec_utils.spectrogram_to_wave(spec, hop_length = args.hop_length)[:, :end - pos]
+					if w.shape[1] < end - pos:
+						w = np.pad(w, ((0, 0), (0, end - pos - w.shape[1])))
+					waves.append(w.astype(np.float32))
+				if tails is not None:
+					k = min(ov, waves[0].shape[1])
+					for w, t in zip(waves, tails):
+						w[:, :k] = t[:, :k] * (1 - fade[:k]) + w[:, :k] * fade[:k]
+				last = end >= n
+				for f, w in zip(outs, waves):
+					f.write((w if last else w[:, :-ov]).T)
+				if last:
+					break
+				tails = [w[:, -ov:] for w in waves]
+				pos += step
+		finally:
+			for f in outs:
+				f.close()
 
-	if args.tta:
-		y_spec, v_spec = sp.separate_tta(X_spec)
-	else:
-		y_spec, v_spec = sp.separate(X_spec)
 
-	print('Inverse STFT of instruments ...', end = ' ', flush = True)
-	wave = spec_utils.spectrogram_to_wave(y_spec, hop_length = args.hop_length)
-	print('done', flush = True)
-	sf.write(out_wav_nonvocal, wave.T, sr)
-
+def _split_whole(in_wav, out_wav_nonvocal, out_wav_vocal, args, sp):
+	X, sr = librosa.load(in_wav, sr=args.sr, mono=False, dtype = np.float32, res_type = 'kaiser_fast')
+	if X.ndim == 1:
+		X = np.asarray([X, X])
+	X_spec = spec_utils.wave_to_spectrogram(X, args.hop_length, args.n_fft)
+	y_spec, v_spec = sp.separate_tta(X_spec) if args.tta else sp.separate(X_spec)
+	sf.write(out_wav_nonvocal, spec_utils.spectrogram_to_wave(y_spec, hop_length = args.hop_length).T, sr)
 	if out_wav_vocal:
-		print('Inverse STFT of vocals ...', end = ' ', flush = True)
-		wave = spec_utils.spectrogram_to_wave(v_spec, hop_length = args.hop_length)
-		print('done', flush = True)
-		sf.write(out_wav_vocal, wave.T, sr)
+		sf.write(out_wav_vocal, spec_utils.spectrogram_to_wave(v_spec, hop_length = args.hop_length).T, sr)
 
 
 song_path = ''

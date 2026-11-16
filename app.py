@@ -958,6 +958,7 @@ def get_ASR(cmd=''):
 # Delay system commands to allow redirect to render first
 def delayed_halt(cmd):
 	time.sleep(3)
+	K.vocal_wanted = False
 	if K.vocal_process is not None and K.vocal_process.is_alive():
 		K.vocal_process.terminate()
 	K.queue_clear()  # stop all pending omxplayer processes

@@ -89,6 +89,7 @@ class Karaoke:
 	last_vocal_time = 0
 	use_DNN_vocal = True
 	vocal_process = None
+	vocal_wanted = False
 	vocal_device = None
 	vocal_mode = 'mixed'
 	is_paused = True
@@ -1261,7 +1262,18 @@ class Karaoke:
 		except:
 			return None
 
+	def vocal_watchdog(self):
+		"""Start the vocal splitter again if it died (for example killed when memory ran out), at most every 2 minutes.
+		Without it, songs downloaded after a crash are never split and their words never timed."""
+		p = self.vocal_process
+		if p is None or p.is_alive() or not self.vocal_wanted or time.time() < getattr(self, 'vocal_retry_at', 0):
+			return
+		self.vocal_retry_at = time.time() + 120
+		logging.warning('Vocal splitter stopped (exit code %s); starting it again' % p.exitcode)
+		Try(lambda: self.vocal_restart())
+
 	def vocal_restart(self):
+		self.vocal_wanted = True
 		if self.platform == 'windows' or self.run_vocal:
 			import vocal_splitter
 			if self.vocal_process is not None and self.vocal_process.is_alive():
@@ -1273,6 +1285,7 @@ class Karaoke:
 			os.system(f"tmux send-keys -t PiKaraoke:0.4 C-c && tmux send-keys -t PiKaraoke:0.4 Up Enter")
 
 	def vocal_stop(self):
+		self.vocal_wanted = False
 		if self.vocal_process is not None and self.vocal_process.is_alive():
 			self.vocal_process.kill()
 		elif self.platform != 'windows':
@@ -1365,6 +1378,9 @@ class Karaoke:
 						self.now_playing_user = head["user"]
 						self.update_queue()
 				self.handle_run_loop()
+				if time.time() >= getattr(self, 'vocal_check_at', 0):
+					self.vocal_check_at = time.time() + 15
+					self.vocal_watchdog()
 			except KeyboardInterrupt:
 				logging.warn("Keyboard interrupt: Exiting pikaraoke...")
 				self.running = False
